@@ -13,6 +13,7 @@ done
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$HERE/app"
+NAME="CatPlayer"
 RN_VERSION="0.74.7"
 
 if [ ! -d "$APP_DIR" ]; then
