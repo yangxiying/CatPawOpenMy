@@ -2,6 +2,15 @@ name: Build CatPlayer iOS IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Build mode (full has nodejs-mobile, minimal is bare RN)'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - minimal
   push:
     paths:
       - 'CatPlayer/**'
@@ -25,9 +34,13 @@ jobs:
 
       - name: Setup JS + overlay + native patches
         working-directory: CatPlayer
+        env:
+          BUILD_MODE: ${{ github.event.inputs.mode || 'full' }}
         run: |
           chmod +x setup.sh build-ipa.sh
-          ./setup.sh --skip-pod
+          EXTRA_FLAGS=""
+          if [ "$BUILD_MODE" = "minimal" ]; then EXTRA_FLAGS="--minimal"; fi
+          ./setup.sh --skip-pod $EXTRA_FLAGS
 
       # nodejs-mobile build phase requires Node 18; switch now that npm/metro work is done
       - uses: actions/setup-node@v4
@@ -45,7 +58,7 @@ jobs:
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CatPlayer-unsigned-ipa
+          name: CatPlayer-${{ github.event.inputs.mode || 'full' }}-ipa
           path: CatPlayer/app/ios/build/CatPlayer.ipa
           if-no-files-found: error
 
@@ -53,29 +66,17 @@ jobs:
         if: github.ref == 'refs/heads/feat/catplayer-ios' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ios-v${{ github.run_number }}
-          name: CatPlayer iOS v${{ github.run_number }}
+          tag_name: ios-${{ github.event.inputs.mode || 'full' }}-v${{ github.run_number }}
+          name: CatPlayer ${{ github.event.inputs.mode || 'Full' }} v${{ github.run_number }}
           body: |
-            ## CatPlayer iOS IPA (unsigned)
+            ## CatPlayer iOS IPA (${{ github.event.inputs.mode || 'full' }}) (unsigned)
 
-            **Source:** `feat/catplayer-ios` @ ${{ github.sha }}
-            **Built:** ${{ github.event.head_commit.timestamp || 'manual trigger' }}
+            **Source:** `${{ github.ref_name }}` @ ${{ github.sha }}
+            **Mode:** `${{ github.event.inputs.mode || 'full' }}`
 
-            ### 安装（未签名 → 侧载自签）
-            下载 `CatPlayer.ipa` 后用以下任一工具安装到 iPhone：
-            - [Sideloadly](https://sideloadly.io/)（Win/macOS，免费 Apple ID）
-            - [AltStore](https://altstore.io/)（免费 Apple ID，7 天自动续签）
-            - [TrollStore](https://github.com/opa334/TrollStore)（受支持 iOS 版本，永久签名）
-
-            > 免费 Apple ID 签名 7 天过期，到期重签即可。
-
-            ### 功能
-            - 内嵌 Node.js 运行 CatVod/CatPaw 爬虫源
-            - 视频/音频播放
-            - 全屏按钮自动横屏全屏
-            - 后台/息屏续播声音
+            ${{ github.event.inputs.mode == 'minimal' && '### ⚠️ 这是 Minimal 版（无 nodejs-mobile）\n用于排查：如果能启动说明 RN 本身没问题，崩溃来自 native module。\n完整版请用其他 Release。' || '### 安装（未签名 → 侧载自签）\n下载 `CatPlayer.ipa` 后用以下任一工具安装到 iPhone：\n- [Sideloadly](https://sideloadly.io/)（Win/macOS，免费 Apple ID）\n- [AltStore](https://altstore.io/)（免费 Apple ID，7 天自动续签）\n- [TrollStore](https://github.com/opa334/TrollStore)（受支持 iOS 版本，永久签名）\n\n> 免费 Apple ID 签名 7 天过期，到期重签即可。\n\n### 功能\n- 内嵌 Node.js 运行 CatVod/CatPaw 爬虫源\n- 视频/音频播放\n- 全屏按钮自动横屏全屏\n- 后台/息屏续播声音' }}
           files: CatPlayer/app/ios/build/CatPlayer.ipa
           draft: false
-          prerelease: false
+          prerelease: ${{ github.event.inputs.mode == 'minimal' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
