@@ -1,0 +1,64 @@
+name: Build CatPlayer Minimal (debug)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-minimal:
+    runs-on: macos-14
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup minimal (no native modules)
+        working-directory: CatPlayer
+        run: |
+          chmod +x setup.sh build-ipa.sh
+          ./setup.sh --skip-pod --minimal
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Pod install
+        working-directory: CatPlayer
+        run: cd app/ios && pod install --repo-update
+
+      - name: Build unsigned IPA
+        working-directory: CatPlayer
+        run: ./build-ipa.sh
+
+      - name: Upload minimal IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CatPlayer-minimal-ipa
+          path: CatPlayer/app/ios/build/CatPlayer.ipa
+          if-no-files-found: error
+
+      - name: Create GitHub Release (minimal debug)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-minimal-v${{ github.run_number }}
+          name: CatPlayer Minimal v${{ github.run_number }} (debug)
+          body: |
+            ## CatPlayer Minimal (debug)
+
+            **纯 RN 0.72 空壳**——无 nodejs-mobile / react-native-video。
+            用于排查启动闪退：安装后如果能看到 "RN 0.72 测试启动 ✅"，
+            说明 RN 本身没问题，崩溃来自 native module。
+
+            **正常版本请用 [Releases](https://github.com/yangxiying/CatPawOpenMy/releases) 里的 IPA。**
+          files: CatPlayer/app/ios/build/CatPlayer.ipa
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
