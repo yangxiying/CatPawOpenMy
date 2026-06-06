@@ -9,7 +9,8 @@ DD="$IOS/build/dd"
 if [ ! -d "$IOS" ]; then echo "✗ app/ios not found — run ./setup.sh first"; exit 1; fi
 
 cd "$IOS"
-rm -rf "$IOS/build"
+# 只清 DerivedData 与上次的 ipa 产物；保留 build/generated/ios（codegen 输出）
+rm -rf "$DD" "$IOS/build/Payload" "$IOS/build/CatPlayer.ipa"
 
 echo "▶ xcodebuild (Release, iphoneos, unsigned) …"
 xcodebuild \
