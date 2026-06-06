@@ -13,12 +13,12 @@ done
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$HERE/app"
-RN_VERSION="0.72.17"
+RN_VERSION="0.74.7"
 
 if [ ! -d "$APP_DIR" ]; then
     echo "▶ generating RN shell (react-native $RN_VERSION) …"
     npm cache clean --force 2>/dev/null || true
-    npx "@react-native-community/cli@11.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION"
+    npx "@react-native-community/cli@12.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION"
 fi
 
 cd "$APP_DIR"
