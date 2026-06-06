@@ -21,32 +21,42 @@ class NodeServiceImpl {
         return () => { this.errCbs = this.errCbs.filter(c => c !== cb); };
     }
 
-    /** 启动内嵌 Node 并绑定桥消息。幂等。 */
+    /** 启动内嵌 Node 并绑定桥消息。延迟 2s 确保 RN ErrorUtils 已初始化。 */
     init() {
         if (this.started) return;
         this.started = true;
-        nodejs.start('main.js');
-        nodejs.channel.addListener('message', (raw: string) => {
-            let m: any;
-            try { m = JSON.parse(raw); } catch (e) { return; }
-            switch (m.type) {
-                case 'ready':
-                    this.ready = true;
-                    this.load(false);
-                    break;
-                case 'port':
-                    this.baseUrl = `http://127.0.0.1:${m.port}`;
-                    this.waiters.splice(0).forEach(w => w.resolve(this.baseUrl as string));
-                    break;
-                case 'log':
-                    this.logCbs.forEach(c => c(String(m.msg)));
-                    break;
-                case 'error':
-                    this.errCbs.forEach(c => c(String(m.error)));
-                    this.waiters.splice(0).forEach(w => w.reject(new Error(String(m.error))));
-                    break;
+        // nodejs-mobile 的 native 模块 RNNodeJsMobile 在桥初始化早期加载，
+        // 若此时 ErrorUtils 未就绪则触发 setGlobalHandler undefined → 崩溃。
+        // 延迟启动让 RN 先完成初始化（包括 ErrorUtils）。
+        setTimeout(() => {
+            try {
+                nodejs.start('main.js');
+            } catch (e) {
+                this.errCbs.forEach(cb => cb(String(e)));
+                this.waiters.splice(0).forEach(w => w.reject(new Error(String(e))));
             }
-        });
+            nodejs.channel.addListener('message', (raw: string) => {
+                let m: any;
+                try { m = JSON.parse(raw); } catch (e) { return; }
+                switch (m.type) {
+                    case 'ready':
+                        this.ready = true;
+                        this.load(false);
+                        break;
+                    case 'port':
+                        this.baseUrl = `http://127.0.0.1:${m.port}`;
+                        this.waiters.splice(0).forEach(w => w.resolve(this.baseUrl as string));
+                        break;
+                    case 'log':
+                        this.logCbs.forEach(c => c(String(m.msg)));
+                        break;
+                    case 'error':
+                        this.errCbs.forEach(c => c(String(m.error)));
+                        this.waiters.splice(0).forEach(w => w.reject(new Error(String(m.error))));
+                        break;
+                }
+            });
+        }, 2000);
     }
 
     private send(obj: any) {
