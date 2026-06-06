@@ -5,6 +5,7 @@ import Sites from './screens/Sites';
 import Category from './screens/Category';
 import Detail from './screens/Detail';
 import Player from './screens/Player';
+import { NodeWebView } from '../node/NodeService';
 
 export type Nav = {
     push: (name: string, params?: any) => void;
@@ -43,6 +44,7 @@ export default function App() {
 
     return (
         <NavContext.Provider value={nav}>
+            <NodeWebView />
             <SafeAreaView style={styles.root}>
                 <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
                 {!isPlayer && (

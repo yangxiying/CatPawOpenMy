@@ -1,20 +1,19 @@
-// 封装本地爬虫服务 HTTP 接口（见后端 router.js / 各 spider）。
+// 封装本地爬虫服务接口（通过 WebView 桥通信）。
 import NodeService from '../node/NodeService';
 
 async function post(api: string, action: string, body?: any): Promise<any> {
-    const base = await NodeService.getBaseUrl();
-    const res = await fetch(`${base}${api}/${action}`, {
+    const res = await NodeService.request({
         method: 'POST',
+        url: `${api}/${action}`,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body || {}),
     });
-    return res.json();
+    try { return JSON.parse(res.body); } catch { return res.body; }
 }
 
 async function get(path: string): Promise<any> {
-    const base = await NodeService.getBaseUrl();
-    const res = await fetch(`${base}${path}`);
-    return res.json();
+    const res = await NodeService.request({ method: 'GET', url: path });
+    try { return JSON.parse(res.body); } catch { return res.body; }
 }
 
 export type Site = { key: string; type: number; name: string; api: string };

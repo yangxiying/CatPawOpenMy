@@ -23,12 +23,12 @@ if [ ! -d "$APP_DIR" ]; then
 fi
 
 cd "$APP_DIR"
-mkdir -p nodejs-assets
+mkdir -p nodejs-assets 2>/dev/null || true  # 保留目录兼容性
 
 echo "▶ installing JS deps …"
 npm install
 if [ "$MINIMAL" = "false" ]; then
-    npm install --save nodejs-mobile-react-native@18.20.4
+    npm install --save react-native-webview react-native-fs
     # react-native-video — uncomment when base app launches OK:
     # npm install --save react-native-video@5.2.2
 fi
@@ -46,11 +46,10 @@ else
 fi
 cp "$HERE/overlay/metro.config.js" "$APP_DIR/metro.config.js"
 
-echo "▶ applying overlay (nodejs-project) …"
+echo "▶ applying overlay (nodejs-project) — skipped (WebView approach)"
+# nodejs-project no longer needed: source bundle runs inside WebView with polyfills
 if [ "$MINIMAL" = "false" ]; then
-    mkdir -p "$APP_DIR/nodejs-assets/nodejs-project"
-    cp "$HERE/overlay/nodejs-project/main.js" "$APP_DIR/nodejs-assets/nodejs-project/main.js"
-    cp "$HERE/overlay/nodejs-project/package.json" "$APP_DIR/nodejs-assets/nodejs-project/package.json"
+    : # no-op
 fi
 
 echo "▶ patching native config …"
