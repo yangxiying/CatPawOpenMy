@@ -82,7 +82,7 @@ const write = (p, c) => { fs.writeFileSync(p, c); console.log('  patched', path.
             /(use_react_native![\s\S]*?)(\s*\))/,
             (m, prefix, close) => {
                 if (prefix.includes('codegen_enabled')) return m;
-                return prefix + "\n    :codegen_enabled => false" + close;
+                return prefix + ",\n    :codegen_enabled => false" + close;
             }
         );
     }
