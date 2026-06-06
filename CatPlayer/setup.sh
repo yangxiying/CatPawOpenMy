@@ -28,7 +28,11 @@ npm install --save nodejs-mobile-react-native@18.20.4 react-native-video@6.19.2
 echo "▶ applying overlay (RN source) …"
 rm -rf "$APP_DIR/src"
 cp -R "$HERE/overlay/src" "$APP_DIR/src"
+# overwrite App.js/.tsx (metro resolves .js before .tsx, so delete the default)
+rm -f "$APP_DIR/App.js" "$APP_DIR/App.tsx"
 cp "$HERE/overlay/App.tsx" "$APP_DIR/App.tsx"
+# metro blacklist — prevent bundling nodejs-assets (Node-only code)
+cp "$HERE/overlay/metro.config.js" "$APP_DIR/metro.config.js"
 
 echo "▶ applying overlay (nodejs-project) …"
 mkdir -p "$APP_DIR/nodejs-assets/nodejs-project"
