@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# 生成 RN 原生壳 → 装依赖 → 覆盖 overlay 源码 → 注入原生补丁 → pod install
+# 生成 RN 原生壳 → 装依赖 → 覆盖 overlay 源码 → 注入原生补丁 → (可选) pod install
+# 接受 --skip-pod 参数跳过 pod install（CI 用，便于用 Node 18 跑原生构建）
 set -euo pipefail
+SKIP_POD=false
+for arg in "$@"; do [ "$arg" = "--skip-pod" ] && SKIP_POD=true; done
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$HERE/app"
@@ -32,8 +35,12 @@ cp "$HERE/overlay/nodejs-project/package.json" "$APP_DIR/nodejs-assets/nodejs-pr
 echo "▶ patching native config …"
 node "$HERE/patch.js" "$APP_DIR"
 
-echo "▶ pod install …"
-cd "$APP_DIR/ios"
-pod install --repo-update
+if [ "$SKIP_POD" = "true" ]; then
+    echo "⏭ skipping pod install (--skip-pod)"
+else
+    echo "▶ pod install …"
+    cd "$APP_DIR/ios"
+    pod install --repo-update
+fi
 
 echo "✅ setup complete →  run  $HERE/build-ipa.sh"

@@ -21,11 +21,20 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Setup (generate shell + deps + overlay + pods)
+      - name: Setup JS + overlay + native patches
         working-directory: CatPlayer
         run: |
           chmod +x setup.sh build-ipa.sh
-          ./setup.sh
+          ./setup.sh --skip-pod
+
+      # nodejs-mobile build phase requires Node 18; switch now that npm/metro work is done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Pod install
+        working-directory: CatPlayer
+        run: cd app/ios && pod install --repo-update
 
       - name: Build unsigned IPA
         working-directory: CatPlayer
