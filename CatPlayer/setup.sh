@@ -55,6 +55,10 @@ fi
 echo "▶ patching native config …"
 node "$HERE/patch.js" "$APP_DIR"
 
+echo "▶ generating codegen specs …"
+cd "$APP_DIR"
+npx react-native codegen 2>&1 || echo "  (codegen exited non-fatal, continuing)"
+
 if [ "$SKIP_POD" = "true" ]; then
     echo "⏭ skipping pod install (--skip-pod)"
 else
