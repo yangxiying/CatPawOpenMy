@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import Video, { VideoRef } from 'react-native-video';
+import Video from 'react-native-video';
 import { Quality } from '../api/CatApi';
 
 /**
@@ -18,7 +18,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     onQuality?: (i: number) => void;
     onBack?: () => void;
 }) {
-    const ref = useRef<VideoRef>(null);
+    const ref = useRef<any>(null);
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 

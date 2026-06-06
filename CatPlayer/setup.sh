@@ -23,7 +23,7 @@ mkdir -p nodejs-assets
 
 echo "▶ installing JS deps …"
 npm install
-npm install --save nodejs-mobile-react-native@18.20.4 react-native-video@6.19.2
+npm install --save nodejs-mobile-react-native@18.20.4 react-native-video@5.2.1
 
 echo "▶ applying overlay (RN source) …"
 rm -rf "$APP_DIR/src"
