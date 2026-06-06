@@ -46,3 +46,34 @@ jobs:
           name: CatPlayer-unsigned-ipa
           path: CatPlayer/app/ios/build/CatPlayer.ipa
           if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/feat/catplayer-ios' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v${{ github.run_number }}
+          name: CatPlayer iOS v${{ github.run_number }}
+          body: |
+            ## CatPlayer iOS IPA (unsigned)
+
+            **Source:** `feat/catplayer-ios` @ ${{ github.sha }}
+            **Built:** ${{ github.event.head_commit.timestamp || 'manual trigger' }}
+
+            ### 安装（未签名 → 侧载自签）
+            下载 `CatPlayer.ipa` 后用以下任一工具安装到 iPhone：
+            - [Sideloadly](https://sideloadly.io/)（Win/macOS，免费 Apple ID）
+            - [AltStore](https://altstore.io/)（免费 Apple ID，7 天自动续签）
+            - [TrollStore](https://github.com/opa334/TrollStore)（受支持 iOS 版本，永久签名）
+
+            > 免费 Apple ID 签名 7 天过期，到期重签即可。
+
+            ### 功能
+            - 内嵌 Node.js 运行 CatVod/CatPaw 爬虫源
+            - 视频/音频播放
+            - 全屏按钮自动横屏全屏
+            - 后台/息屏续播声音
+          files: CatPlayer/app/ios/build/CatPlayer.ipa
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
