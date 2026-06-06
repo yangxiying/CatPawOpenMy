@@ -1,0 +1,39 @@
+name: Build CatPlayer iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'CatPlayer/**'
+      - '.github/workflows/build-ios.yml'
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup (generate shell + deps + overlay + pods)
+        working-directory: CatPlayer
+        run: |
+          chmod +x setup.sh build-ipa.sh
+          ./setup.sh
+
+      - name: Build unsigned IPA
+        working-directory: CatPlayer
+        run: ./build-ipa.sh
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CatPlayer-unsigned-ipa
+          path: CatPlayer/app/ios/build/CatPlayer.ipa
+          if-no-files-found: error

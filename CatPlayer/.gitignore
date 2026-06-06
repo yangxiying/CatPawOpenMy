@@ -1,0 +1,8 @@
+# 生成工程（每次 CI 重新生成，不入库）
+app/
+node_modules/
+
+# 产物 / 缓存
+*.log
+.DS_Store
+ios/build/
