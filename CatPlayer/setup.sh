@@ -8,9 +8,9 @@ RN_VERSION="0.72.17"
 
 if [ ! -d "$APP_DIR" ]; then
     echo "▶ generating RN shell (react-native $RN_VERSION) …"
-    # pin CLI to same version as RN (0.72) to avoid mismatched template.config.js lookup
+    # pin CLI to 11.3.7 (last RN 0.72-compatible CLI; its own versioning ≠ RN version)
     npm cache clean --force 2>/dev/null || true
-    npx "@react-native-community/cli@0.72.17" init CatPlayer --directory app --skip-install --version "$RN_VERSION"
+    npx "@react-native-community/cli@11.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION"
 fi
 
 cd "$APP_DIR"
