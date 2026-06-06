@@ -21,14 +21,22 @@ xcodebuild \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY="" \
-    AD_HOC_CODE_SIGNING_ALLOWED=YES
+    AD_HOC_CODE_SIGNING_ALLOWED=YES \
+    | tail -30
 
+echo "--- looking for .app ---"
+find "$DD" -name "CatPlayer.app" -type d 2>/dev/null
 APP="$DD/Build/Products/Release-iphoneos/CatPlayer.app"
-[ -d "$APP" ] || { echo "✗ build failed: $APP not found"; exit 1; }
+[ -d "$APP" ] || { echo "✗ build failed: $APP not found"; echo "Contents of $DD:"; ls -R "$DD" 2>/dev/null | head -30; exit 1; }
 
 echo "▶ packaging .ipa …"
 mkdir -p "$IOS/build/Payload"
 cp -R "$APP" "$IOS/build/Payload/"
 ( cd "$IOS/build" && rm -f CatPlayer.ipa && zip -qry CatPlayer.ipa Payload )
 
-echo "✅ →  $IOS/build/CatPlayer.ipa   (unsigned — sideload with Sideloadly / AltStore / TrollStore)"
+IPA="$IOS/build/CatPlayer.ipa"
+if [ -f "$IPA" ]; then
+    echo "✅ IPA created: $(ls -lh "$IPA" | awk '{print $5}') →  $IPA"
+else
+    echo "✗ IPA not found at $IPA"; exit 1
+fi

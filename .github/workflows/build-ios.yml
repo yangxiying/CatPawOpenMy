@@ -11,6 +11,8 @@ jobs:
   build:
     runs-on: macos-14
     timeout-minutes: 90
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
