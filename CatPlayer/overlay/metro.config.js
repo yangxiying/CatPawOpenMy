@@ -5,14 +5,13 @@
  * 参见 nodejs-mobile-react-native README：
  * https://github.com/nodejs-mobile/nodejs-mobile-react-native
  */
-const path = require('path');
-const { getDefaultConfig } = require('metro-config');
+const exclusionList = require('metro-config/src/defaults/exclusionList');
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
-module.exports = (async () => {
-    const config = await getDefaultConfig(__dirname);
-    // 用 blockList（metro ≥0.64）或 blacklistRE（旧版）排除整个 nodejs-assets 目录
-    config.resolver.blockList = [
-        /nodejs-assets\/nodejs-project\/.*/,
-    ];
-    return config;
-})();
+const config = {
+    resolver: {
+        blockList: exclusionList([/nodejs-assets\/nodejs-project\/.*/]),
+    },
+};
+
+module.exports = mergeConfig(getDefaultConfig(__dirname), config);
