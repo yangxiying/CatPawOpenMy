@@ -59,21 +59,34 @@ const write = (p, c) => { fs.writeFileSync(p, c); console.log('  patched', path.
     write(p, s);
 })();
 
-// 3) Podfile — bump deployment target to 13.4
+// 3) Podfile — bump deployment target to 13.4 + disable codegen (old arch)
 (() => {
     const p = path.join(IOS, 'Podfile');
     if (!fs.existsSync(p)) { console.warn('  ! Podfile not found'); return; }
     let s = read(p);
-    if (/platform :ios, '13\.4'/.test(s)) { console.log('  Podfile already 13.4'); return; }
-    if (/platform :ios, min_ios_version_supported/.test(s)) {
+    // 3a) deployment target
+    if (/platform :ios, '13\.4'/.test(s)) { console.log('  Podfile already 13.4'); }
+    else if (/platform :ios, min_ios_version_supported/.test(s)) {
         s = s.replace(/platform :ios, min_ios_version_supported/, "platform :ios, '13.4'");
-        write(p, s);
     } else if (/platform :ios, '[\d.]+'/.test(s)) {
         s = s.replace(/platform :ios, '[\d.]+'/, "platform :ios, '13.4'");
-        write(p, s);
-    } else {
-        console.warn('  ! Podfile platform line not found');
     }
+    // 3b) disable codegen — nodejs-mobile has no codegen specs; RN 0.74 tries
+    //     to run codegen even with old architecture and fails on missing specs.
+    //     Inject :codegen_enabled => false into use_react_native! call.
+    if (s.includes('codegen_enabled')) {
+        console.log('  Podfile codegen setting already present');
+    } else {
+        // match use_react_native!( ... ) and inject codegen_enabled before closing )
+        s = s.replace(
+            /(use_react_native![\s\S]*?)(\s*\))/,
+            (m, prefix, close) => {
+                if (prefix.includes('codegen_enabled')) return m;
+                return prefix + "\n    :codegen_enabled => false" + close;
+            }
+        );
+    }
+    write(p, s);
 })();
 
 console.log('patch.js done.');
