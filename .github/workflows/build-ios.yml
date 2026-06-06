@@ -36,7 +36,7 @@ jobs:
 
       - name: Pod install
         working-directory: CatPlayer
-        run: cd app/ios && pod install --repo-update
+        run: cd app/ios && DISABLE_CODEGEN=1 pod install --repo-update
 
       - name: Build unsigned IPA
         working-directory: CatPlayer
