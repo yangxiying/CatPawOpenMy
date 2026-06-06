@@ -18,6 +18,9 @@ fi
 
 cd "$APP_DIR"
 
+# nodejs-mobile postinstall writes helper scripts into nodejs-assets/ during npm install
+mkdir -p nodejs-assets
+
 echo "▶ installing JS deps …"
 npm install
 npm install --save nodejs-mobile-react-native@18.20.4 react-native-video@6.19.2
