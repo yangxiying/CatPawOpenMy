@@ -48,15 +48,16 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
                 // 注入 bundleCode + configCode 直接执行
                 wvRef.current?.injectJavaScript(`
                     (async () => {
+                        var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
                         try {
-                            window._log('bundle eval start, len=${bCode.length}');
+                            _log('bundle eval start, len=${bCode.length}');
                             const code = ${JSON.stringify(bCode)};
                             const fn = new Function('require', 'module', 'exports', '__filename', '__dirname', code);
                             const m = { exports: {} };
                             fn(globalThis.require, m, m.exports, '/main.js', '/');
-                            window._log('bundle fn executed, exports=' + (typeof m.exports));
+                            _log('bundle fn executed, exports=' + (typeof m.exports));
                             const mod = m.exports.default || m.exports;
-                            window._log('mod.start=' + (typeof mod.start));
+                            _log('mod.start=' + (typeof mod.start));
                             if (mod.start) {
                                 const config = { default: {} };
                                 try {
@@ -66,17 +67,17 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
                                     cfgFn(cfgM.exports, cfgM);
                                     const cfg = cfgM.exports.default || cfgM.exports;
                                     config.default = cfg;
-                                    window._log('config loaded');
-                                } catch(e) { window._log('config fail: ' + e); console.log('config load failed, using empty'); }
-                                window._log('calling mod.start...');
+                                    _log('config loaded');
+                                } catch(e) { _log('config fail: ' + e); console.log('config load failed, using empty'); }
+                                _log('calling mod.start...');
                                 await mod.start(config.default);
-                                window._log('mod.start returned');
+                                _log('mod.start returned');
                             } else {
-                                window._log('ERROR: no mod.start');
+                                _log('ERROR: no mod.start');
                             }
                         } catch(e) {
-                            window._log('bundle error: ' + (e && e.stack ? e.stack : String(e)));
-                            window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:String(e)}));
+                            try { _log('bundle error: ' + (e && e.stack ? e.stack : String(e))); } catch(ee) {}
+                            try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:String(e)})); } catch(ee) {}
                         }
                     })();
                 `);

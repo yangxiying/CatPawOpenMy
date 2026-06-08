@@ -5,7 +5,9 @@
 export const polyfillCode = `function POLYFILL_SOURCE() {
 
 // 日志桥：向 RN 发送日志消息（显示在 Boot 页面的日志框里）
+// 同时暴露到全局，供注入的 bundle 代码使用
 var _log = function (m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: '[WV] ' + m })); } catch (e) {} };
+window._log = _log;
 
 _log('polyfill start');
 
