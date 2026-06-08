@@ -132,6 +132,49 @@ function md5(str: string) {
 
 type Cb<T> = (v: T) => void;
 
+/** 生成 index.html：内联 polyfill + 自动 fetch bundle + config 并执行 */
+function generateIndexHtml(polyfillCode: string): string {
+    return \`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
+(function(){ try {
+\${polyfillCode}
+POLYFILL_SOURCE();
+} catch(e) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'polyfill init: '+e})); } catch {} }
+(async () => {
+    var _log = function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch {} };
+    try {
+        _log('fetching bundle...');
+        const [bundleResp, cfgResp] = await Promise.all([
+            fetch('./index.js'),
+            fetch('./index.config.js')
+        ]);
+        const bundleCode = await bundleResp.text();
+        const cfgCode = await cfgResp.text();
+        _log('bundle loaded (' + bundleCode.length + ' bytes)');
+        const fn = new Function('require','module','exports','__filename','__dirname', bundleCode);
+        const m = { exports: {} };
+        fn(globalThis.require, m, m.exports, '/main.js', '/');
+        _log('bundle fn ok, start=' + (typeof (m.exports.default||m.exports).start));
+        const mod = m.exports.default || m.exports;
+        if (!mod.start) { _log('ERROR: no start fn'); return; }
+        var config = {};
+        try {
+            var cfgFn = new Function('exports','module', cfgCode);
+            var cfgM = {exports:{}};
+            cfgFn(cfgM.exports, cfgM);
+            config = cfgM.exports.default || cfgM.exports;
+            _log('config loaded');
+        } catch(e) { _log('config fail: ' + e); }
+        _log('calling mod.start...');
+        await mod.start(config);
+        _log('mod.start returned');
+    } catch(e) {
+        _log('bundle error: ' + (e && e.stack ? e.stack : String(e)));
+        try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'bundle: '+e})); } catch {}
+    }
+})();
+</script></body></html>\`;
+}
+
 class NodeServiceImpl {
     private started = false;
     private baseUrl: string | null = null;
@@ -140,6 +183,9 @@ class NodeServiceImpl {
     private errCbs: Cb<string>[] = [];
     private bundleCode: string = '';
     private configCode: string = '';
+    private htmlPath: string = '';
+    private bundleDir: string = '';
+    private _isWebsiteSource = false;
     private readyResolve: (() => void) | null = null;
     private readyPromise: Promise<void>;
     private ready = false;
@@ -286,6 +332,14 @@ class NodeServiceImpl {
         return this.configCode;
     }
 
+    getHtmlPath(): string {
+        return this.htmlPath;
+    }
+
+    getBundleDir(): string {
+        return this.bundleDir;
+    }
+
     getRefreshCount(): number {
         return this.refreshCount;
     }
@@ -330,18 +384,20 @@ export function NodeWebView() {
         nodeService.log(msg);
     }, []);
 
-    const code = nodeService.getBundleCode();
-    if (!code) {
+    const html = nodeService.getHtmlPath();
+    if (!html) {
         return null;
     }
+
+    const htmlUri = Platform.OS === 'android' ? 'file://' + html : html;
+    const bundleUri = nodeService.getBundleDir();
 
     return (
         <WebViewNode
             key={nodeService.getRefreshCount()}
             ref={setWvRef}
-            bundleCode={code}
-            configCode={nodeService.getConfigCode()}
-            polyfillCode={polyfillCode}
+            htmlUri={htmlUri}
+            bundleUri={bundleUri}
             onReady={handleReady}
             onError={handleError}
             onLog={handleLog}
