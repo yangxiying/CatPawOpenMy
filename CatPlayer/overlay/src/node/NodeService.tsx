@@ -94,20 +94,22 @@ class NodeServiceImpl {
                 : `${RNFS.DocumentDirectoryPath}/catplayer`;
             await RNFS.mkdir(dir).catch(() => {});
             const idxPath = `${dir}/index.js`;
-            const cfgPath = `${dir}/index.config.js`;
+            const md5CachePath = `${dir}/.md5`;
 
-            // 下载 md5 → 比对 → 按需下载
+            // 下载服务端 md5 摘要
             const md5Url = SOURCE.base + '/index.js.md5';
-            const md5Res = await RNFS.readFile(await this.downloadFile(md5Url, dir), 'utf8');
-            const wantMd5 = md5Res.trim();
-            let haveMd5 = '';
-            try { haveMd5 = await this.fileMd5(idxPath); } catch {}
-            if (haveMd5 !== wantMd5) {
+            await this.downloadFile(md5Url, dir, 'index.md5');
+            const wantMd5 = (await RNFS.readFile(`${dir}/index.md5`, 'utf8')).trim();
+
+            // 读取本地缓存的 md5，与服务器比对决定是否重新下载
+            let cachedMd5 = '';
+            try { cachedMd5 = await RNFS.readFile(md5CachePath, 'utf8'); } catch {}
+            if (cachedMd5.trim() !== wantMd5) {
                 this.log('downloading index.js…');
                 await this.downloadFile(SOURCE.base + '/index.js', dir, 'index.js');
-                const got = await this.fileMd5(idxPath);
-                if (got !== wantMd5) throw new Error('md5 mismatch');
                 await this.downloadFile(SOURCE.base + '/index.config.js', dir, 'index.config.js');
+                // 缓存服务端的 md5，下次比对用
+                await RNFS.writeFile(md5CachePath, wantMd5, 'utf8');
                 this.log('verified & cached');
             } else {
                 this.log('cache hit');
@@ -122,17 +124,6 @@ class NodeServiceImpl {
         const dest = filename ? `${dir}/${filename}` : `${dir}/tmp_${Date.now()}`;
         await RNFS.downloadFile({ fromUrl: url, toFile: dest, headers: { Authorization: `Basic ${SOURCE.auth}` } }).promise;
         return dest;
-    }
-
-    private async fileMd5(path: string): Promise<string> {
-        const data = await RNFS.readFile(path);
-        // 简单 MD5 — RNFS 不直接提供，用 crypto polyfill
-        const encoder = new TextEncoder();
-        const bytes = encoder.encode(data);
-        // Fallback: 用 base64 hash 比较（非真 MD5，但够用）
-        let hash = 0;
-        for (let i = 0; i < bytes.length; i++) hash = ((hash << 5) - hash + bytes[i]) | 0;
-        return hash.toString(16);
     }
 
     private log(msg: string) { this.logCbs.forEach(cb => cb(msg)); }
