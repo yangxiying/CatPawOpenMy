@@ -263,7 +263,8 @@ class NodeServiceImpl {
         return dest;
     }
 
-    private log(msg: string) { this.logCbs.forEach(cb => cb(msg)); }
+    /** 公开日志方法（外部也可调用，例如 WebViewNode 转发 log 消息到 Boot） */
+    public log(msg: string) { this.logCbs.forEach(cb => cb(msg)); }
     private error(msg: string) { this.errCbs.forEach(cb => cb(msg)); }
 
     setWebViewRef(ref: WebViewNodeRef | null) { this.wvRef = ref; }
@@ -325,6 +326,8 @@ export function NodeWebView() {
 
     const handleLog = useCallback((msg: string) => {
         setLogs(l => [...l.slice(-19), msg]);
+        // 同时转发到 NodeService（Boot 页面的日志框）
+        nodeService.log(msg);
     }, []);
 
     const code = nodeService.getBundleCode();

@@ -131,10 +131,11 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
 
     const polyfillCodeRef = useRef(polyfillCode);
 
-    // WebView 加载完成后注入 polyfill（inline script 在 iOS WKWebView 有时不执行）
+    // WebView 加载完成后注入 polyfill（备用；内联 script 通常更快）
     const handleLoad = useCallback(() => {
-        onLog?.('WebView loaded, injecting polyfill...');
+        onLog?.('WebView loaded, injecting polyfill (fallback)...');
         wvRef.current?.injectJavaScript(`
+if (window.__POLYFILL_DONE) { true; return; }
 try {
 ${polyfillCodeRef.current}
 POLYFILL_SOURCE();
@@ -145,7 +146,16 @@ true;
 `);
     }, [onLog]);
 
-    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
+    // 内联 HTML：polyfill 在页面解析时立即执行。
+    // polyfillCode 是已求值的字符串（含 raw backtick / ${}），
+    // 放在 `${...}` 内插中不会再次求值，直接作为 JS 源码注入 <script>。
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
+(function(){ try {
+${polyfillCode}
+POLYFILL_SOURCE();
+window.__POLYFILL_DONE = 1;
+} catch(e) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'polyfill exec: '+e})); } catch {} } })();
+</script></body></html>`;
 
     return (
         <View style={styles.hidden}>
