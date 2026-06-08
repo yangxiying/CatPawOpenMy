@@ -130,20 +130,74 @@ function urlPolyfill() {
 // ============================================================
 // 4. events polyfill (EventEmitter)
 // ============================================================
-class EventEmitterPolyfill {
-    constructor() { this._events = {}; }
-    on(event, fn) { (this._events[event] = this._events[event] || []).push(fn); return this; }
-    off(event, fn) { if (this._events[event]) this._events[event] = this._events[event].filter(f => f !== fn); return this; }
-    emit(event, ...args) { (this._events[event] || []).forEach(fn => fn(...args)); return this._events[event]?.length > 0; }
-    once(event, fn) { const wrapped = (...a) => { fn(...a); this.off(event, wrapped); }; return this.on(event, wrapped); }
-    addListener(event, fn) { return this.on(event, fn); }
-    removeListener(event, fn) { return this.off(event, fn); }
-    removeAllListeners(event) { this._events[event] = []; return this; }
-    listenerCount(event) { return this._events[event]?.length || 0; }
-    setMaxListeners() { return this; }
-    getMaxListeners() { return 100; }
-    prependListener() { return this; }
+function EventEmitterPolyfill() {
+    if (!(this instanceof EventEmitterPolyfill)) return new EventEmitterPolyfill();
+    this._events = {};
 }
+EventEmitterPolyfill.prototype.on = function(event, fn) {
+    if (!this._events) this._events = {};
+    (this._events[event] = this._events[event] || []).push(fn);
+    return this;
+};
+EventEmitterPolyfill.prototype.off = function(event, fn) {
+    if (!this._events) this._events = {};
+    const arr = this._events[event];
+    if (arr) this._events[event] = arr.filter(f => f !== fn);
+    return this;
+};
+EventEmitterPolyfill.prototype.emit = function(event, ...args) {
+    if (!this._events) this._events = {};
+    const list = this._events[event] || [];
+    list.forEach(fn => fn(...args));
+    return list.length > 0;
+};
+EventEmitterPolyfill.prototype.once = function(event, fn) {
+    const wrapped = (...a) => { fn(...a); this.off(event, wrapped); };
+    return this.on(event, wrapped);
+};
+EventEmitterPolyfill.prototype.addListener = EventEmitterPolyfill.prototype.on;
+EventEmitterPolyfill.prototype.removeListener = EventEmitterPolyfill.prototype.off;
+EventEmitterPolyfill.prototype.removeAllListeners = function(event) {
+    if (!this._events) this._events = {};
+    if (event) this._events[event] = [];
+    else this._events = {};
+    return this;
+};
+EventEmitterPolyfill.prototype.listenerCount = function(event) {
+    if (!this._events) return 0;
+    return this._events[event]?.length || 0;
+};
+EventEmitterPolyfill.prototype.setMaxListeners = function() { return this; };
+EventEmitterPolyfill.prototype.getMaxListeners = function() { return 100; };
+EventEmitterPolyfill.prototype.prependListener = function(event, fn) {
+    if (!this._events) this._events = {};
+    this._events[event] = [fn].concat(this._events[event] || []);
+    return this;
+};
+EventEmitterPolyfill.prototype.prependOnceListener = function(event, fn) {
+    const wrapped = (...a) => { fn(...a); this.off(event, wrapped); };
+    return this.prependListener(event, wrapped);
+};
+EventEmitterPolyfill.prototype.listeners = function(event) { return [...((this._events || {})[event] || [])]; };
+EventEmitterPolyfill.prototype.eventNames = function() { return Object.keys(this._events || {}); };
+EventEmitterPolyfill.prototype.rawListeners = function(event) { return [...((this._events || {})[event] || [])]; };
+EventEmitterPolyfill.defaultMaxListeners = 10;
+EventEmitterPolyfill.listenerCount = function(emitter, event) { return emitter.listenerCount(event); };
+EventEmitterPolyfill.EventEmitter = EventEmitterPolyfill;
+EventEmitterPolyfill.errorMonitor = Symbol('events.errorMonitor');
+EventEmitterPolyfill.captureRejections = false;
+
+// require('events') must return EventEmitterPolyfill itself (a constructor function)
+// with EventEmitterPolyfill.EventEmitter === EventEmitterPolyfill (like Node.js)
+const EVENT_MODULE = EventEmitterPolyfill;
+EVENT_MODULE.EventEmitter = EventEmitterPolyfill;
+EVENT_MODULE.once = function once(emitter, event) {
+    return new Promise((resolve) => { emitter.once(event, resolve); });
+};
+EVENT_MODULE.listenerCount = EventEmitterPolyfill.listenerCount;
+EVENT_MODULE.defaultMaxListeners = 10;
+EVENT_MODULE.captureRejections = false;
+EVENT_MODULE.errorMonitor = Symbol('events.errorMonitor');
 
 // ============================================================
 // 5. http/https polyfill (核心：拦截 createServer)
@@ -155,10 +209,30 @@ window.__PENDING_REQUESTS = PENDING_REQUESTS;
 let NEXT_REQ_ID = 1;
 
 function createServerPolyfill(requestHandler) {
+    const _listeners = {};
     const server = {
         _handler: requestHandler,
         _port: 0,
-        on: (event, cb) => { if (event === 'listening') cb(); return server; },
+        on: (event, cb) => {
+            (_listeners[event] = _listeners[event] || []).push(cb);
+            return server;
+        },
+        once: (event, cb) => {
+            const wrapped = function(...args) { cb(...args); server.removeListener(event, wrapped); };
+            wrapped._isOnce = true;
+            server.on(event, wrapped);
+            return server;
+        },
+        removeListener: (event, cb) => {
+            const arr = _listeners[event];
+            if (arr) _listeners[event] = arr.filter(f => f !== cb);
+            return server;
+        },
+        emit: (event, ...args) => {
+            const list = _listeners[event] || [];
+            list.slice().forEach(fn => fn(...args));
+            return list.length > 0;
+        },
         address: () => ({ address: '127.0.0.1', port: server._port, family: 'IPv4', url: `http://127.0.0.1:${server._port}` }),
         listen: (opts, cb) => {
             const rawPort = typeof opts === 'number' ? opts : (opts?.port || 0);
@@ -171,6 +245,10 @@ function createServerPolyfill(requestHandler) {
             return server;
         },
         close: (cb) => { delete HTTP_SERVERS[server._port]; if (cb) cb(); },
+        addListener: (event, cb) => server.on(event, cb),
+        removeAllListeners: (event) => { if (event) delete _listeners[event]; else Object.keys(_listeners).forEach(k => delete _listeners[k]); return server; },
+        listeners: (event) => [...((_listeners[event] || []))],
+        eventNames: () => Object.keys(_listeners),
     };
     return server;
 }
@@ -206,12 +284,20 @@ function httpRequestPolyfill(url, options) {
 // 5b. http/https module (供 require('http') 使用)
 // ============================================================
 function httpPolyfill() {
+    const Agent = class Agent extends EventEmitterPolyfill {
+        constructor() { super(); }
+        createConnection() { return {}; }
+        destroy() {}
+    };
     return {
         createServer: createServerPolyfill,
         request: httpRequestPolyfill,
         get: (url, opts) => { const r = httpRequestPolyfill(url, { ...opts, method: 'GET' }); r.end(); return r; },
         METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
         STATUS_CODES: { 200: 'OK', 404: 'Not Found', 500: 'Internal Server Error' },
+        Agent,
+        globalAgent: new Agent(),
+        maxHeaderSize: 16384,
     };
 }
 
@@ -290,8 +376,27 @@ function fsPolyfill() {
         readFileSync: () => { throw new Error('fs.readFileSync not available in WebView'); },
         writeFileSync: () => { throw new Error('fs.writeFileSync not available in WebView'); },
         mkdirSync: () => {},
+        mkdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
         statSync: () => { throw new Error('fs.statSync not available'); },
+        stat: (path, cb) => { process.nextTick(() => cb(new Error('ENOENT'))); },
         readdirSync: () => [],
+        openSync: () => -1,
+        open: (path, flags, mode, cb) => { if (typeof mode === 'function') { cb = mode; } process.nextTick(() => cb(null, -1)); },
+        close: (fd, cb) => { if (cb) process.nextTick(cb); },
+        closeSync: () => {},
+        write: (fd, buffer, offset, length, position, cb) => {
+            if (typeof cb !== 'function') { cb = position; } if (typeof cb !== 'function') { cb = length; }
+            if (typeof cb === 'function') process.nextTick(() => cb(null, typeof buffer === 'string' ? Buffer.byteLength(buffer) : buffer.length));
+        },
+        writeSync: (fd, buffer) => typeof buffer === 'string' ? Buffer.byteLength(buffer) : buffer.length,
+        fstat: (fd, cb) => { process.nextTick(() => cb(null, { size: 0, mode: 0o644 })); },
+        fstatSync: () => ({ size: 0, mode: 0o644 }),
+        fsync: (fd, cb) => { if (cb) process.nextTick(cb); },
+        fsyncSync: () => {},
+        ftruncate: (fd, len, cb) => { if (typeof len === 'function') { cb = len; } if (cb) process.nextTick(cb); },
+        ftruncateSync: () => {},
+        realpathSync: (p) => p,
+        access: (path, mode, cb) => { if (typeof mode === 'function') { cb = mode; } if (cb) process.nextTick(cb); },
     };
 }
 
@@ -301,20 +406,55 @@ function fsPolyfill() {
 const MODULES = {
     'http': { default: httpPolyfill(), ...httpPolyfill() },
     'https': { default: httpPolyfill(), ...httpPolyfill() },
-    'stream': { Stream: EventEmitterPolyfill, Readable: EventEmitterPolyfill, Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill },
-    'zlib': {},
-    'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']) },
-    'tls': {},
-    'net': {},
-    'os': { platform: () => 'darwin', homedir: () => '/var/mobile', tmpdir: () => '/tmp', type: () => 'Darwin', arch: () => 'arm64', cpus: () => [{ model: 'Apple' }], totalmem: () => 6000000000, freemem: () => 3000000000, uptime: () => 0, networkInterfaces: () => ({}) },
-    'assert': { ok: (val, msg) => { if (!val) throw new Error(msg || 'Assertion failed'); }, strictEqual: (a, b) => { if (a !== b) throw new Error(`${a} !== ${b}`); } },
-    'util': { format: (f, ...a) => String(f), inspect: (o) => JSON.stringify(o), promisify: (fn) => (...a) => new Promise((res, rej) => fn(...a, (e, r) => e ? rej(e) : res(r))) },
+    'events': EVENT_MODULE,
+    'stream': { Stream: EventEmitterPolyfill, Readable: EventEmitterPolyfill, Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); } },
+    'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), constants: {} },
+    'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']), lookup: (h, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } cb && cb(null, '127.0.0.1', 4); } },
+    'tls': { TLSSocket: EventEmitterPolyfill, connect: () => ({ on: () => {} }) },
+    'tty': { isatty: () => false },
+    'net': { Socket: EventEmitterPolyfill, createConnection: () => ({ on: () => {}, pipe: () => {} }), connect: () => ({ on: () => {} }) },
+    'os': { platform: () => 'darwin', homedir: () => '/var/mobile', tmpdir: () => '/tmp', type: () => 'Darwin', arch: () => 'arm64', hostname: () => 'CatPlayer', cpus: () => [{ model: 'Apple' }], totalmem: () => 6000000000, freemem: () => 3000000000, uptime: () => 0, networkInterfaces: () => ({}) },
+    'path': pathPolyfill(),
+    'url': urlPolyfill(),
+    'fs': fsPolyfill(),
+    'constants': {},
+    'worker_threads': {},
+    'child_process': {},
+    'fs/promises': { access: () => Promise.resolve(), readFile: () => Promise.reject(new Error('fs/promises not available')), writeFile: () => Promise.resolve(), mkdir: () => Promise.resolve(), unlink: () => Promise.resolve(), readdir: () => Promise.resolve([]), stat: () => Promise.resolve({}) },
+    'assert': (() => {
+        function assert(val, msg) { if (!val) throw new Error(msg || 'Assertion failed'); }
+        assert.ok = assert;
+        assert.strictEqual = (a, b, msg) => { if (a !== b) throw new Error(msg || `${a} !== ${b}`); };
+        assert.equal = (a, b, msg) => { if (a != b) throw new Error(msg || `${a} == ${b}`); };
+        assert.deepEqual = (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error('not deep equal'); };
+        assert.notStrictEqual = (a, b) => { if (a === b) throw new Error(`${a} === ${b}`); };
+        assert.AssertionError = class AssertionError extends Error {
+            constructor(o) { super(o.message || ''); this.code = o?.code || 'ERR_ASSERTION'; this.actual = o?.actual; this.expected = o?.expected; this.operator = o?.operator || '=='; }
+        };
+        assert.fail = (msg) => { throw new Error(msg || 'Failed'); };
+        return assert;
+    })(),
+    'util': {
+        format: (f, ...a) => { if (typeof f !== 'string') return String(f); let i = 0; return f.replace(/%[sdifoO]/g, () => String(a[i++] ?? '')); },
+        inspect: (o) => JSON.stringify(o),
+        inherits: (ctor, superCtor) => { if (!ctor || !superCtor) { if (ctor) ctor.prototype = {}; return; } const proto = superCtor.prototype || {}; ctor.super_ = superCtor; ctor.prototype = Object.create(proto, { constructor: { value: ctor, enumerable: false, configurable: true } }); },
+        promisify: (fn) => (...a) => new Promise((res, rej) => fn(...a, (e, r) => e ? rej(e) : res(r))),
+        deprecate: (fn) => fn,
+        types: { isDate: (v) => v instanceof Date, isRegExp: (v) => v instanceof RegExp, isArray: Array.isArray, isBoolean: (v) => typeof v === 'boolean', isNumber: (v) => typeof v === 'number', isString: (v) => typeof v === 'string', isFunction: (v) => typeof v === 'function', isObject: (v) => v !== null && typeof v === 'object', isPrimitive: (v) => v === null || !['object','function'].includes(typeof v) },
+        callbackify: (fn) => (...a) => { const cb = a.pop(); fn(...a).then(r => cb(null, r)).catch(e => cb(e)); },
+        TextDecoder: globalThis.TextDecoder,
+        TextEncoder: globalThis.TextEncoder,
+    },
+    'module': { Module: class Module { static _resolveFilename() { return ''; } static _cache = {}; _compile() {} } },
+    'buffer': { Buffer: globalThis.Buffer, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
 };
 
 function customRequire(moduleName) {
     if (MODULES[moduleName]) return MODULES[moduleName];
-    // 返回空模块，避免 require 崩溃
-    console.warn('[polyfill] require(' + moduleName + ') → stub');
+    // Try without 'node:' prefix
+    const stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
+    if (stripped && MODULES[stripped]) return MODULES[stripped];
+    // console.warn('[polyfill] require(' + moduleName + ') → stub');
     return {};
 }
 

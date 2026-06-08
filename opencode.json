@@ -1,19 +1,8 @@
 {
+  "$schema": "https://opencode.ai/config.json",
   "instructions": [
-    {
-      "path": "AGENTS.md",
-      "title": "Repository Agent Notes",
-      "description": "High-signal quick reference for automated agents: dev/build commands, spider testing, iOS notes, and CI parity."
-    },
-    {
-      "path": "CLAUDE.md",
-      "title": "Root CLAUDE.md",
-      "description": "Architecture notes and embedding contract for the Node service. Read before large changes."
-    },
-    {
-      "path": "CatPlayer/CLAUDE.md",
-      "title": "CatPlayer CLAUDE.md",
-      "description": "iOS player architecture, WebView polyfill constraints and CI guidance. Read before iOS-related changes."
-    }
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CatPlayer/CLAUDE.md"
   ]
 }

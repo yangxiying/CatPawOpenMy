@@ -114,8 +114,9 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
         }
     }, [bundleCode, configCode, onReady, onError, onLog]);
 
-    // polyfillCode 是 JS 字符串，通过 injectedJavaScript 注入
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>${polyfillCode}</script></body></html>`;
+    // polyfillCode 是 JS 字符串（function POLYFILL_SOURCE() { ... } 的源码）
+    // 需要定义 + 立即执行
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>${polyfillCode}\nPOLYFILL_SOURCE();</script></body></html>`;
 
     return (
         <View style={styles.hidden}>
