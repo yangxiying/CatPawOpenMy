@@ -11,7 +11,6 @@ import RNFS from 'react-native-fs';
 import { Platform } from 'react-native';
 
 // polyfill 源码（同步注入 WebView）
-// 优先使用预构建的字符串常量（避免 Hermes Function.prototype.toString() 反编译 bug）
 let polyfillCode: string = '';
 try {
     polyfillCode = require('./polyfill-string').polyfillCode;
@@ -23,9 +22,8 @@ try {
     }
 }
 
-// 简易 MD5 实现（用于本地文件完整性校验，来源：简化版 public-domain 实现）
+// 简易 MD5 实现
 function md5(str: string) {
-    // UTF8 encode
     function toUtf8(s: string) {
         return unescape(encodeURIComponent(s));
     }
@@ -50,7 +48,6 @@ function md5(str: string) {
     const bytes = s;
     const bitLen = bytes.length * 8;
     let words = toWords(bytes);
-    // append padding
     const idx = bytes.length;
     words[idx >> 2] = (words[idx >> 2] || 0) | (0x80 << ((idx % 4) * 8));
     const needed = (((idx + 8) >> 6) + 1) * 16;
@@ -132,49 +129,6 @@ function md5(str: string) {
 
 type Cb<T> = (v: T) => void;
 
-/** 生成 index.html：内联 polyfill + 自动 fetch bundle + config 并执行 */
-function generateIndexHtml(polyfillCode: string): string {
-    return \`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
-(function(){ try {
-\${polyfillCode}
-POLYFILL_SOURCE();
-} catch(e) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'polyfill init: '+e})); } catch {} }
-(async () => {
-    var _log = function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch {} };
-    try {
-        _log('fetching bundle...');
-        const [bundleResp, cfgResp] = await Promise.all([
-            fetch('./index.js'),
-            fetch('./index.config.js')
-        ]);
-        const bundleCode = await bundleResp.text();
-        const cfgCode = await cfgResp.text();
-        _log('bundle loaded (' + bundleCode.length + ' bytes)');
-        const fn = new Function('require','module','exports','__filename','__dirname', bundleCode);
-        const m = { exports: {} };
-        fn(globalThis.require, m, m.exports, '/main.js', '/');
-        _log('bundle fn ok, start=' + (typeof (m.exports.default||m.exports).start));
-        const mod = m.exports.default || m.exports;
-        if (!mod.start) { _log('ERROR: no start fn'); return; }
-        var config = {};
-        try {
-            var cfgFn = new Function('exports','module', cfgCode);
-            var cfgM = {exports:{}};
-            cfgFn(cfgM.exports, cfgM);
-            config = cfgM.exports.default || cfgM.exports;
-            _log('config loaded');
-        } catch(e) { _log('config fail: ' + e); }
-        _log('calling mod.start...');
-        await mod.start(config);
-        _log('mod.start returned');
-    } catch(e) {
-        _log('bundle error: ' + (e && e.stack ? e.stack : String(e)));
-        try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'bundle: '+e})); } catch {}
-    }
-})();
-</script></body></html>\`;
-}
-
 class NodeServiceImpl {
     private started = false;
     private baseUrl: string | null = null;
@@ -183,29 +137,37 @@ class NodeServiceImpl {
     private errCbs: Cb<string>[] = [];
     private bundleCode: string = '';
     private configCode: string = '';
-    private htmlPath: string = '';
-    private bundleDir: string = '';
     private _isWebsiteSource = false;
     private readyResolve: (() => void) | null = null;
     private readyPromise: Promise<void>;
     private ready = false;
     private renderTrigger: (() => void) | null = null;
     private refreshCount = 0;
+    private playCbs: Cb<{ url: string; title?: string }>[] = [];
 
     constructor() {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
     }
 
-    /** 等待 WebView 就绪（polyfill 加载→bundle 启动→server port 就绪） */
+    get isWebsiteSource() { return this._isWebsiteSource; }
+
     waitForReady(): Promise<void> {
         if (this.ready) return Promise.resolve();
         return this.readyPromise;
     }
 
-    /** 由 WebViewNode 收到 'port' 消息时调用 */
     markReady() {
         this.ready = true;
         this.readyResolve?.();
+    }
+
+    onPlay(cb: Cb<{ url: string; title?: string }>) {
+        this.playCbs.push(cb);
+        return () => { this.playCbs = this.playCbs.filter(c => c !== cb); };
+    }
+
+    triggerPlay(url: string, title?: string) {
+        this.playCbs.forEach(cb => cb({ url, title }));
     }
 
     onLog(cb: Cb<string>) {
@@ -217,10 +179,8 @@ class NodeServiceImpl {
         return () => { this.errCbs = this.errCbs.filter(c => c !== cb); };
     }
 
-    /** 注册 React 强制渲染回调 */
     setRenderTrigger(cb: (() => void) | null) { this.renderTrigger = cb; }
 
-    /** 重试（不清缓存） */
     retry() {
         this.refreshCount++;
         this.started = false;
@@ -231,7 +191,6 @@ class NodeServiceImpl {
         this.init();
     }
 
-    /** 强制刷新：清缓存重新下载 */
     async refresh() {
         this.refreshCount++;
         this.started = false;
@@ -239,7 +198,6 @@ class NodeServiceImpl {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
         this.bundleCode = '';
         this.configCode = '';
-        // 清除已下载的文件
         try {
             const dir = Platform.OS === 'ios'
                 ? `${RNFS.DocumentDirectoryPath}/catplayer`
@@ -263,15 +221,12 @@ class NodeServiceImpl {
             const idxPath = `${dir}/index.js`;
             const md5CachePath = `${dir}/.md5`;
 
-            // 下载服务端 md5 摘要
             const md5Url = SOURCE.base + '/index.js.md5';
             await this.downloadFile(md5Url, dir, 'index.md5');
             const wantMd5 = (await RNFS.readFile(`${dir}/index.md5`, 'utf8')).trim();
 
-            // 读取本地缓存的 md5，与服务器比对决定是否重新下载
             let cachedMd5 = '';
             try { cachedMd5 = await RNFS.readFile(md5CachePath, 'utf8'); } catch {}
-            // 如果缓存 md5 相同，仍需确认 index.js 文件确实存在且文件内容的 md5 与 wantMd5 匹配（防止文件损坏）
             const idxExists = await RNFS.exists(idxPath).catch(() => false);
             let localOk = false;
             if (idxExists) {
@@ -279,22 +234,22 @@ class NodeServiceImpl {
                     const content = await RNFS.readFile(idxPath, 'utf8');
                     const localMd5 = md5(content).trim();
                     if (localMd5 === wantMd5) localOk = true;
-                } catch (e) { /* ignore */ }
+                } catch (e) { }
             }
             if (cachedMd5.trim() !== wantMd5 || !localOk) {
                 this.log('downloading index.js…');
                 await this.downloadFile(SOURCE.base + '/index.js', dir, 'index.js');
                 await this.downloadFile(SOURCE.base + '/index.config.js', dir, 'index.config.js');
-                // 缓存服务端的 md5，下次比对用
                 await RNFS.writeFile(md5CachePath, wantMd5, 'utf8');
                 this.log('verified & cached');
             } else {
                 this.log('cache hit');
             }
-            // 读入内存供 WebView 直接注入（绕过 file:// fetch CORS 限制）
             this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
             this.configCode = await RNFS.readFile(`${dir}/index.config.js`, 'utf8');
+            this._isWebsiteSource = this.bundleCode.includes('globalThis.websiteBundle');
             this.log(`bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
+            if (this._isWebsiteSource) this.log('  类型: 网站源（website source）');
             this.log('triggering WebView render…');
             this.renderTrigger?.();
             this.log('WebView render triggered');
@@ -309,7 +264,6 @@ class NodeServiceImpl {
         return dest;
     }
 
-    /** 公开日志方法（外部也可调用，例如 WebViewNode 转发 log 消息到 Boot） */
     public log(msg: string) { this.logCbs.forEach(cb => cb(msg)); }
     private error(msg: string) { this.errCbs.forEach(cb => cb(msg)); }
 
@@ -320,42 +274,22 @@ class NodeServiceImpl {
         return this.wvRef.request(req);
     }
 
-    getBaseUrl(): Promise<string> {
-        return Promise.resolve('bridge://local');
-    }
-
-    getBundleCode(): string {
-        return this.bundleCode;
-    }
-
-    getConfigCode(): string {
-        return this.configCode;
-    }
-
-    getHtmlPath(): string {
-        return this.htmlPath;
-    }
-
-    getBundleDir(): string {
-        return this.bundleDir;
-    }
-
-    getRefreshCount(): number {
-        return this.refreshCount;
-    }
+    getBaseUrl(): Promise<string> { return Promise.resolve('bridge://local'); }
+    getBundleCode(): string { return this.bundleCode; }
+    getConfigCode(): string { return this.configCode; }
+    getRefreshCount(): number { return this.refreshCount; }
 }
 
 const nodeService = new NodeServiceImpl();
 export default nodeService;
 
 /** React 组件：包裹隐藏 WebView，需挂载在 App 里 */
-export function NodeWebView() {
+export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
     const [logs, setLogs] = useState<string[]>([]);
     const [err, setErr] = useState<string | null>(null);
     const [, forceRender] = useState(0);
     const wvRef = useRef<WebViewNodeRef>(null);
 
-    // callback ref：当 WebViewNode 挂载/卸载时自动更新 NodeService 的 wvRef
     const setWvRef = useCallback((ref: WebViewNodeRef | null) => {
         wvRef.current = ref;
         nodeService.setWebViewRef(ref);
@@ -380,27 +314,28 @@ export function NodeWebView() {
 
     const handleLog = useCallback((msg: string) => {
         setLogs(l => [...l.slice(-19), msg]);
-        // 同时转发到 NodeService（Boot 页面的日志框）
         nodeService.log(msg);
     }, []);
 
-    const html = nodeService.getHtmlPath();
-    if (!html) {
-        return null;
-    }
+    const handlePlay = useCallback((url: string, title?: string) => {
+        nodeService.triggerPlay(url, title);
+    }, []);
 
-    const htmlUri = Platform.OS === 'android' ? 'file://' + html : html;
-    const bundleUri = nodeService.getBundleDir();
+    const code = nodeService.getBundleCode();
+    if (!code) { return null; }
 
     return (
         <WebViewNode
             key={nodeService.getRefreshCount()}
             ref={setWvRef}
-            htmlUri={htmlUri}
-            bundleUri={bundleUri}
+            bundleCode={code}
+            configCode={nodeService.getConfigCode()}
+            polyfillCode={polyfillCode}
             onReady={handleReady}
             onError={handleError}
             onLog={handleLog}
+            visible={forcedVisible ?? nodeService.isWebsiteSource}
+            onPlay={handlePlay}
         />
     );
 }

@@ -100,20 +100,18 @@ try {
     if (typeof globalThis.websiteBundle !== 'function') { throw new Error('not a website source'); }
     const innerCode = globalThis.websiteBundle();
     _log('inner len=' + innerCode.length);
-    const patched = innerCode.replace(/\\)}\\(\\)/g, 'globalThis.__WS=module.exports; })()');
+    var lastIdx = innerCode.lastIndexOf('})()');
+    var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
     eval(patched);
-    const ws = globalThis.__WS; delete globalThis.__WS;
-    _log('ws exports: ' + Object.keys(ws || {}).join(','));
-    if (ws && ws.renderClient) {
-        const app = ws.renderClient();
+    var ws = globalThis.__WS; delete globalThis.__WS;
+    _log('ws exports: ' + (ws ? Object.keys(ws).join(',') : 'undefined'));
+    if (ws && typeof ws.renderClient === 'function') {
+        var app = ws.renderClient();
         _log('renderClient returned: ' + typeof app);
         if (app != null) {
-            if (app.render) { app.render(); }
-            else {
-                const root = ReactDOM.createRoot(document.getElementById('www'));
-                if (typeof app === 'function') { root.render(React.createElement(app)); }
-                else { root.render(app); }
-            }
+            var www = document.getElementById('www');
+            if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
+            else { ReactDOM.createRoot(www).render(app); }
         }
         _log('website rendered');
         window.ReactNativeWebView.postMessage(JSON.stringify({type:'websiteReady', port:1}));

@@ -24,9 +24,16 @@ export default function Boot() {
         const offLog = NodeService.onLog(m => setLogs(l => [...l.slice(-9), m]));
         const offErr = NodeService.onError(m => setErr(m));
         NodeService.init();
-        // 等待 WebView polyfill 加载→bundle 启动→server 就绪，再调用 API
         const timeout = setTimeout(() => setErr('等待超时（60s）— WebView 未就绪'), 60000);
-        NodeService.waitForReady().then(() => { clearTimeout(timeout); go(); }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
+        NodeService.waitForReady().then(() => {
+            clearTimeout(timeout);
+            if (NodeService.isWebsiteSource) {
+                // 网站源：WebView 已显示全屏 UI，不需跳转到 Sites
+                setLogs(l => [...l, '网站源已加载完成']);
+            } else {
+                go();
+            }
+        }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
         return () => { offLog(); offErr(); clearTimeout(timeout); };
     }, []);
 

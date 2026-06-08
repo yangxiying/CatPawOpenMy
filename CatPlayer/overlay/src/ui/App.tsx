@@ -6,6 +6,7 @@ import Category from './screens/Category';
 import Detail from './screens/Detail';
 import Player from './screens/Player';
 import { NodeWebView } from '../node/NodeService';
+import NodeService from '../node/NodeService';
 
 export type Nav = {
     push: (name: string, params?: any) => void;
@@ -37,6 +38,14 @@ export default function App() {
         return () => sub.remove();
     }, []);
 
+    // 监听网站源的播放请求
+    useEffect(() => {
+        const unsub = NodeService.onPlay(({ url, title }) => {
+            nav.push('Player', { qualities: [{ label: '源', url }], headers: {}, title: title || '' });
+        });
+        return unsub;
+    }, [nav]);
+
     const cur = stack[stack.length - 1];
     const Screen = SCREENS[cur.name] || Boot;
     const canBack = stack.length > 1;
@@ -44,7 +53,7 @@ export default function App() {
 
     return (
         <NavContext.Provider value={nav}>
-            <NodeWebView />
+            <NodeWebView visible={NodeService.isWebsiteSource && !isPlayer} />
             <SafeAreaView style={styles.root}>
                 <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
                 {!isPlayer && (
