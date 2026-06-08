@@ -10,13 +10,17 @@ import { SOURCE } from '../config';
 import RNFS from 'react-native-fs';
 import { Platform } from 'react-native';
 
-// polyfill.js 内容（同步注入）
-let polyfillCode = '';
+// polyfill 源码（同步注入 WebView）
+// 优先使用预构建的字符串常量（避免 Hermes Function.prototype.toString() 反编译 bug）
+let polyfillCode: string = '';
 try {
-    // RN 打包时此文件会被 metro 打入 bundle
-    polyfillCode = require('./polyfills.js').toString();
+    polyfillCode = require('./polyfill-string').polyfillCode;
 } catch {
-    polyfillCode = '// polyfill load failed';
+    try {
+        polyfillCode = require('./polyfills.js').toString();
+    } catch {
+        polyfillCode = '// polyfill load failed';
+    }
 }
 
 // 简易 MD5 实现（用于本地文件完整性校验，来源：简化版 public-domain 实现）

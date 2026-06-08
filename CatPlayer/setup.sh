@@ -31,6 +31,9 @@ if [ "$MINIMAL" = "false" ]; then
     npm install --save react-native-webview react-native-fs react-native-video@5.2.2
 fi
 
+echo "▶ inlining polyfill source (avoids Hermes Function.prototype.toString() bug) …"
+node "$HERE/scripts/inline-polyfill.mjs"
+
 echo "▶ applying overlay (RN source) …"
 rm -rf "$APP_DIR/src"
 cp -R "$HERE/overlay/src" "$APP_DIR/src"
