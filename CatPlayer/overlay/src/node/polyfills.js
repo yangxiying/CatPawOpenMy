@@ -3,8 +3,13 @@
  *
  * 核心：http.createServer polyfill 拦截请求 → postMessage 回 RN → RN postMessage 发请求 → polyfill 调用 handler。
  * bundle（4.47MB CJS）只用 Node 核心 API（http/crypto/fs/path），polyfill 这些即可执行。
+ *
+ * 此文件被 Metro require() 时，通过 POLYFILL_SOURCE.toString() 导出源码字符串
+ * 以供注入隐藏 WebView 执行。polyfill 代码本身在 WebView 中运行。
  */
 'use strict';
+
+function POLYFILL_SOURCE() {
 
 // ============================================================
 // 0. 全局 polyfill
@@ -398,3 +403,13 @@ console.log('[polyfill] Node.js polyfills loaded (WebView)');
 
 // 通知 RN polyfill 已就绪，可以注入 bundle
 try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {}
+
+} // ← end POLYFILL_SOURCE()
+
+// 自执行：在 WebView 中设置 polyfill
+POLYFILL_SOURCE();
+
+// 当被 Metro require() 时以字符串形式导出源码
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = POLYFILL_SOURCE.toString();
+}
