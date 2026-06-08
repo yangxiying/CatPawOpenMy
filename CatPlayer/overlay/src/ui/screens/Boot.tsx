@@ -25,8 +25,9 @@ export default function Boot() {
         const offErr = NodeService.onError(m => setErr(m));
         NodeService.init();
         // 等待 WebView polyfill 加载→bundle 启动→server 就绪，再调用 API
-        NodeService.waitForReady().then(go).catch(e => setErr(String(e)));
-        return () => { offLog(); offErr(); };
+        const timeout = setTimeout(() => setErr('等待超时（15s）— WebView 未就绪'), 15000);
+        NodeService.waitForReady().then(() => { clearTimeout(timeout); go(); }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
+        return () => { offLog(); offErr(); clearTimeout(timeout); };
     }, []);
 
     return (

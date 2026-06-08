@@ -11,6 +11,11 @@
 
 function POLYFILL_SOURCE() {
 
+// 日志桥：向 RN 发送日志消息（显示在 Boot 页面的日志框里）
+var _log = function (m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: '[WV] ' + m })); } catch (e) {} };
+
+_log('polyfill start');
+
 // ============================================================
 // 0. 全局 polyfill
 // ============================================================
@@ -240,8 +245,9 @@ function createServerPolyfill(requestHandler) {
             server._port = numericPort || 18080; // 0 → 默认 18080（WebView 端不真正监听）
             HTTP_SERVERS[server._port] = requestHandler;
             if (cb) cb();
+            _log('listen port=' + server._port);
             // 通知 RN 端口就绪
-            try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'port', port: server._port })); } catch {}
+            try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'port', port: server._port })); } catch (e) { _log('port msg fail: ' + e); }
             return server;
         },
         close: (cb) => { delete HTTP_SERVERS[server._port]; if (cb) cb(); },
@@ -545,7 +551,7 @@ window.addEventListener('message', (event) => {
 // ============================================================
 // 10. 注入
 // ============================================================
-globalThis.Buffer = globalThis.Buffer || Buffer;
+globalThis.Buffer = globalThis.Buffer || globalThis.Buffer;
 globalThis.require = customRequire;
 globalThis.__filename = 'main.js';
 globalThis.__dirname = '/';
@@ -556,16 +562,22 @@ globalThis.exports = globalThis.module.exports;
 // 11. catServerFactory / catDartServerPort
 // ============================================================
 globalThis.catServerFactory = function catServerFactory(handle) {
+    _log('catServerFactory called');
     return createServerPolyfill(handle);
 };
 globalThis.catDartServerPort = function catDartServerPort() {
     return 0;
 };
 
+_log('globals injected');
+
 console.log('[polyfill] Node.js polyfills loaded (WebView)');
+try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: 'polyfill env ready' })); } catch {}
 
 // 通知 RN polyfill 已就绪，可以注入 bundle
-try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {}
+try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {
+    try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'error', error: 'failed to send ready msg' })); } catch {}
+}
 
 } // ← end POLYFILL_SOURCE()
 

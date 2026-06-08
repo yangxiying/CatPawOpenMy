@@ -35,32 +35,47 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
     }));
 
     const handleMessage = useCallback((e: WebViewMessageEvent) => {
-        const msg = JSON.parse(e.nativeEvent.data);
+        let _msg: any;
+        try { _msg = JSON.parse(e.nativeEvent.data); } catch { return; }
+        const msg = _msg;
+        onLog?.(`msg from WebView: ${msg.type}`);
         switch (msg.type) {
             case 'ready':
                 onLog?.('WebView polyfill ready');
+                const bCode = bundleCode;
+                const cCode = configCode;
+                onLog?.('bundle size=' + bCode.length + ' config size=' + cCode.length);
                 // 注入 bundleCode + configCode 直接执行
                 wvRef.current?.injectJavaScript(`
                     (async () => {
                         try {
-                            const code = ${JSON.stringify(bundleCode)};
+                            window._log('bundle eval start, len=${bCode.length}');
+                            const code = ${JSON.stringify(bCode)};
                             const fn = new Function('require', 'module', 'exports', '__filename', '__dirname', code);
                             const m = { exports: {} };
                             fn(globalThis.require, m, m.exports, '/main.js', '/');
+                            window._log('bundle fn executed, exports=' + (typeof m.exports));
                             const mod = m.exports.default || m.exports;
+                            window._log('mod.start=' + (typeof mod.start));
                             if (mod.start) {
                                 const config = { default: {} };
                                 try {
-                                    const cfgCode = ${JSON.stringify(configCode)};
+                                    const cfgCode = ${JSON.stringify(cCode)};
                                     const cfgFn = new Function('exports','module',cfgCode);
                                     const cfgM = {exports:{}};
                                     cfgFn(cfgM.exports, cfgM);
                                     const cfg = cfgM.exports.default || cfgM.exports;
                                     config.default = cfg;
-                                } catch(e) { console.log('config load failed, using empty'); }
+                                    window._log('config loaded');
+                                } catch(e) { window._log('config fail: ' + e); console.log('config load failed, using empty'); }
+                                window._log('calling mod.start...');
                                 await mod.start(config.default);
+                                window._log('mod.start returned');
+                            } else {
+                                window._log('ERROR: no mod.start');
                             }
                         } catch(e) {
+                            window._log('bundle error: ' + (e && e.stack ? e.stack : String(e)));
                             window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:String(e)}));
                         }
                     })();
@@ -115,8 +130,15 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
     }, [bundleCode, configCode, onReady, onError, onLog]);
 
     // polyfillCode 是 JS 字符串（function POLYFILL_SOURCE() { ... } 的源码）
-    // 需要定义 + 立即执行
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>${polyfillCode}\nPOLYFILL_SOURCE();</script></body></html>`;
+    // 需要定义 + 立即执行。外层 try/catch 兜底
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
+try {
+${polyfillCode}
+POLYFILL_SOURCE();
+} catch(e) {
+    try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'polyfill exec: '+e})); } catch {}
+}
+</script></body></html>`;
 
     return (
         <View style={styles.hidden}>

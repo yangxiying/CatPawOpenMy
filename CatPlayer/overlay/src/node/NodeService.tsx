@@ -203,6 +203,7 @@ class NodeServiceImpl {
     async init() {
         if (this.started) return;
         this.started = true;
+        this.log(`init start (polyfillCode len=${polyfillCode.length})`);
         this.log('downloading source…');
         try {
             const dir = Platform.OS === 'ios'
@@ -243,7 +244,10 @@ class NodeServiceImpl {
             // 读入内存供 WebView 直接注入（绕过 file:// fetch CORS 限制）
             this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
             this.configCode = await RNFS.readFile(`${dir}/index.config.js`, 'utf8');
+            this.log(`bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
+            this.log('triggering WebView render…');
             this.renderTrigger?.();
+            this.log('WebView render triggered');
         } catch (e: any) {
             this.error(String(e?.message || e));
         }
