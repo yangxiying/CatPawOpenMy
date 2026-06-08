@@ -145,6 +145,8 @@ class EventEmitterPolyfill {
 // ============================================================
 const HTTP_SERVERS = {}; // port → handler(req, res)
 const PENDING_REQUESTS = new Map(); // reqId → { resolve, reject }
+// 暴露到 window 以便 injectJavaScript 注入的代码能访问
+window.__PENDING_REQUESTS = PENDING_REQUESTS;
 let NEXT_REQ_ID = 1;
 
 function createServerPolyfill(requestHandler) {
@@ -298,7 +300,91 @@ function customRequire(moduleName) {
 }
 
 // ============================================================
-// 9. 注入
+// 9. 消息监听：接收 RN 发来的请求，路由到 HTTP handler
+// ============================================================
+window.addEventListener('message', (event) => {
+    let msg;
+    try { msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch { return; }
+    if (!msg || msg.type !== 'request') return;
+
+    const port = msg.port || 18080;
+    const handler = HTTP_SERVERS[port];
+    if (!handler) {
+        console.warn('[polyfill] no handler for port', port);
+        return;
+    }
+
+    const bodyContent = msg.body || '';
+
+    // 构造 req 对象（兼容 Fastify 使用的部分 IncomingMessage 接口）
+    const req = new EventEmitterPolyfill();
+    req.method = (msg.method || 'GET').toUpperCase();
+    req.url = msg.url || '/';
+    req.headers = msg.headers || {};
+    req.socket = {};
+    req.connection = {};
+    req._body = bodyContent;
+
+    // 构造 res 对象（兼容 Fastify 使用的 ServerResponse 接口）
+    let statusCode = 200;
+    const resHeaders = {};
+    let resBody = '';
+    const res = new EventEmitterPolyfill();
+    res.statusCode = 200;
+    res.statusMessage = '';
+    res._headers = {};
+    res.setHeader = (key, val) => { resHeaders[key] = val; };
+    res.getHeader = (key) => resHeaders[key];
+    res.getHeaders = () => ({ ...resHeaders });
+    res.hasHeader = (key) => key in resHeaders;
+    res.removeHeader = (key) => { delete resHeaders[key]; };
+    res.writeHead = (status, statusText, hdrs) => {
+        statusCode = status;
+        if (typeof statusText === 'object') { hdrs = statusText; statusText = ''; }
+        if (hdrs) Object.assign(resHeaders, hdrs);
+    };
+    res.write = (chunk) => { resBody += String(chunk); };
+    res.end = (chunk) => {
+        if (chunk) resBody += String(chunk);
+        try {
+            window.ReactNativeWebView?.postMessage(JSON.stringify({
+                type: 'response',
+                reqId: msg.reqId,
+                status: statusCode,
+                headers: resHeaders,
+                body: resBody,
+            }));
+        } catch (e) { console.error('[polyfill] response postMessage failed', e); }
+    };
+    res.addTrailers = () => {};
+    res.flushHeaders = () => {};
+    res.sendDate = false;
+    res.assignSocket = () => {};
+    res.detachSocket = () => {};
+    res.destroy = () => {};
+    res.writeContinue = () => {};
+    res.writeProcessing = () => {};
+    res.setTimeout = () => res;
+    res.statusCode = statusCode;
+
+    // 以流形式推送 body（Fastify 通过 req.on('data') + req.on('end') 读取）
+    process.nextTick(() => {
+        if (bodyContent) {
+            try { req.emit('data', Buffer.from(bodyContent)); } catch (e) { /* ignore */ }
+        }
+        try { req.emit('end'); } catch (e) { /* ignore */ }
+    });
+
+    try { handler(req, res); } catch (e) {
+        console.error('[polyfill] handler error', e);
+        window.ReactNativeWebView?.postMessage(JSON.stringify({
+            type: 'response', reqId: msg.reqId, status: 500, headers: {}, body: String(e),
+        }));
+    }
+});
+
+// ============================================================
+// 10. 注入
 // ============================================================
 globalThis.Buffer = globalThis.Buffer || Buffer;
 globalThis.require = customRequire;

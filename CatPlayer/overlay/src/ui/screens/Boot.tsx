@@ -24,7 +24,8 @@ export default function Boot() {
         const offLog = NodeService.onLog(m => setLogs(l => [...l.slice(-9), m]));
         const offErr = NodeService.onError(m => setErr(m));
         NodeService.init();
-        go();
+        // 等待 WebView polyfill 加载→bundle 启动→server 就绪，再调用 API
+        NodeService.waitForReady().then(go).catch(e => setErr(String(e)));
         return () => { offLog(); offErr(); };
     }, []);
 
@@ -38,10 +39,10 @@ export default function Boot() {
             </ScrollView>
             {err && (
                 <View style={styles.row}>
-                    <TouchableOpacity style={styles.btn} onPress={() => { NodeService.retry(); go(); }}>
+                    <TouchableOpacity style={styles.btn} onPress={() => { NodeService.retry(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
                         <Text style={styles.btnt}>重试</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.refresh(); go(); }}>
+                    <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.refresh(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
                         <Text style={styles.btnt}>强制刷新源</Text>
                     </TouchableOpacity>
                 </View>

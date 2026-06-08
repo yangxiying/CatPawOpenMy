@@ -2,7 +2,7 @@
  * NodeService — 用隐藏 WebView 执行 Node.js 源 bundle，通过 postMessage 桥通信。
  * 替代 nodejs-mobile-react-native（iOS 18 兼容问题）。
  */
-import React, { useRef, useCallback, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import WebViewNode, { WebViewNodeRef } from './WebViewNode';
 import { BridgeRequest, BridgeResponse, rejectAll } from './bridge';
@@ -28,6 +28,25 @@ class NodeServiceImpl {
     private logCbs: Cb<string>[] = [];
     private errCbs: Cb<string>[] = [];
     private bundleUri: string = '';
+    private readyResolve: (() => void) | null = null;
+    private readyPromise: Promise<void>;
+    private ready = false;
+
+    constructor() {
+        this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
+    }
+
+    /** 等待 WebView 就绪（polyfill 加载→bundle 启动→server port 就绪） */
+    waitForReady(): Promise<void> {
+        if (this.ready) return Promise.resolve();
+        return this.readyPromise;
+    }
+
+    /** 由 WebViewNode 收到 'port' 消息时调用 */
+    markReady() {
+        this.ready = true;
+        this.readyResolve?.();
+    }
 
     onLog(cb: Cb<string>) {
         this.logCbs.push(cb);
@@ -36,6 +55,33 @@ class NodeServiceImpl {
     onError(cb: Cb<string>) {
         this.errCbs.push(cb);
         return () => { this.errCbs = this.errCbs.filter(c => c !== cb); };
+    }
+
+    /** 重试（不清缓存） */
+    retry() {
+        this.started = false;
+        // 重置 ready 状态
+        this.ready = false;
+        this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
+        this.bundleUri = '';
+        this.init();
+    }
+
+    /** 强制刷新：清缓存重新下载 */
+    async refresh() {
+        this.started = false;
+        this.ready = false;
+        this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
+        this.bundleUri = '';
+        // 清除已下载的文件
+        try {
+            const dir = Platform.OS === 'ios'
+                ? `${RNFS.DocumentDirectoryPath}/catplayer`
+                : `${RNFS.DocumentDirectoryPath}/catplayer`;
+            await RNFS.unlink(`${dir}/index.js`).catch(() => {});
+            await RNFS.unlink(`${dir}/index.config.js`).catch(() => {});
+        } catch {}
+        await this.init();
     }
 
     async init() {
@@ -117,8 +163,10 @@ export function NodeWebView() {
     const [err, setErr] = useState<string | null>(null);
     const wvRef = useRef<WebViewNodeRef>(null);
 
-    useEffect(() => {
-        nodeService.setWebViewRef(wvRef.current);
+    // callback ref：当 WebViewNode 挂载/卸载时自动更新 NodeService 的 wvRef
+    const setWvRef = useCallback((ref: WebViewNodeRef | null) => {
+        wvRef.current = ref;
+        nodeService.setWebViewRef(ref);
     }, []);
 
     useEffect(() => {
@@ -127,6 +175,7 @@ export function NodeWebView() {
 
     const handleReady = useCallback((port: number) => {
         setLogs(l => [...l, `server ready (port ${port})`]);
+        nodeService.markReady();
     }, []);
 
     const handleError = useCallback((msg: string) => {
@@ -144,7 +193,7 @@ export function NodeWebView() {
 
     return (
         <WebViewNode
-            ref={wvRef}
+            ref={setWvRef}
             bundleUri={nodeService.getBundleUri()}
             polyfillCode={polyfillCode}
             onReady={handleReady}

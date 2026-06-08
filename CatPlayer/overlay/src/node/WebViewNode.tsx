@@ -78,8 +78,37 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleUri, polyfillCode
                 onLog?.(msg.msg);
                 break;
             case 'proxyRequest':
-                // WebView 内 http.createServer polyfill 发来的请求
-                // 由 NodeService 处理并回传响应
+                // WebView 内 http.createServer polyfill 发来的外部 API 请求
+                // 由 RN 侧执行真实 HTTP 请求并回传响应
+                (async () => {
+                    try {
+                        const url = msg.url;
+                        const method = msg.method || 'GET';
+                        const headers = msg.headers || {};
+                        const body = msg.body || null;
+                        const resp = await fetch(url, {
+                            method,
+                            headers: { ...headers, 'Accept-Encoding': 'identity' },
+                            body: method !== 'GET' && method !== 'HEAD' && body ? body : undefined,
+                        });
+                        const respBody = await resp.text();
+                        const respHeaders: Record<string, string> = {};
+                        resp.headers.forEach((v: string, k: string) => { respHeaders[k] = v; });
+                        wvRef.current?.injectJavaScript(`
+                            (() => {
+                                const p = window.__PENDING_REQUESTS.get(${msg.reqId});
+                                if (p) { p.resolve({ statusCode: ${resp.status}, headers: ${JSON.stringify(respHeaders)}, body: ${JSON.stringify(respBody)} }); window.__PENDING_REQUESTS.delete(${msg.reqId}); }
+                            })();
+                        `);
+                    } catch (e: any) {
+                        wvRef.current?.injectJavaScript(`
+                            (() => {
+                                const p = window.__PENDING_REQUESTS.get(${msg.reqId});
+                                if (p) { p.reject(new Error(${JSON.stringify(String(e))})); window.__PENDING_REQUESTS.delete(${msg.reqId}); }
+                            })();
+                        `);
+                    }
+                })();
                 break;
             default:
                 handleWebViewMessage(e);
