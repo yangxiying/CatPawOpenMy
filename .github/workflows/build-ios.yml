@@ -12,7 +12,7 @@ on:
           - full
           - minimal
   push:
-    branches: [main]
+    branches: [main, feat/catplayer-ios]
     paths:
       - 'CatPlayer/**'
       - '.github/workflows/build-ios.yml'
