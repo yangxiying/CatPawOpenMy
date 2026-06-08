@@ -156,8 +156,9 @@ function createServerPolyfill(requestHandler) {
         on: (event, cb) => { if (event === 'listening') cb(); return server; },
         address: () => ({ address: '127.0.0.1', port: server._port, family: 'IPv4', url: `http://127.0.0.1:${server._port}` }),
         listen: (opts, cb) => {
-            const port = typeof opts === 'number' ? opts : (opts?.port || 0);
-            server._port = port || 18080; // WebView 端用固定端口（不真正监听）
+            const rawPort = typeof opts === 'number' ? opts : (opts?.port || 0);
+            const numericPort = typeof rawPort === 'number' ? rawPort : parseInt(rawPort, 10) || 0;
+            server._port = numericPort || 18080; // 0 → 默认 18080（WebView 端不真正监听）
             HTTP_SERVERS[server._port] = requestHandler;
             if (cb) cb();
             // 通知 RN 端口就绪
@@ -394,3 +395,6 @@ globalThis.module = { exports: {} };
 globalThis.exports = globalThis.module.exports;
 
 console.log('[polyfill] Node.js polyfills loaded (WebView)');
+
+// 通知 RN polyfill 已就绪，可以注入 bundle
+try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {}
