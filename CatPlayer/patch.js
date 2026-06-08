@@ -59,17 +59,17 @@ const write = (p, c) => { fs.writeFileSync(p, c); console.log('  patched', path.
     write(p, s);
 })();
 
-// 3) Podfile — bump deployment target to 13.4
+// 3) Podfile — bump deployment target to 16.0 (iOS 16+ required)
 (() => {
     const p = path.join(IOS, 'Podfile');
     if (!fs.existsSync(p)) { console.warn('  ! Podfile not found'); return; }
     let s = read(p);
-    if (/platform :ios, '13\.4'/.test(s)) { console.log('  Podfile already 13.4'); return; }
+    if (/platform :ios, '16\.0'/.test(s)) { console.log('  Podfile already 16.0'); return; }
     if (/platform :ios, min_ios_version_supported/.test(s)) {
-        s = s.replace(/platform :ios, min_ios_version_supported/, "platform :ios, '13.4'");
+        s = s.replace(/platform :ios, min_ios_version_supported/, "platform :ios, '16.0'");
         write(p, s);
     } else if (/platform :ios, '[\d.]+'/.test(s)) {
-        s = s.replace(/platform :ios, '[\d.]+'/, "platform :ios, '13.4'");
+        s = s.replace(/platform :ios, '[\d.]+'/, "platform :ios, '16.0'");
         write(p, s);
     } else {
         console.warn('  ! Podfile platform line not found');

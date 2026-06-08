@@ -28,9 +28,7 @@ mkdir -p nodejs-assets 2>/dev/null || true  # 保留目录兼容性
 echo "▶ installing JS deps …"
 npm install
 if [ "$MINIMAL" = "false" ]; then
-    npm install --save react-native-webview react-native-fs
-    # react-native-video — uncomment when base app launches OK:
-    # npm install --save react-native-video@5.2.2
+    npm install --save react-native-webview react-native-fs react-native-video@5.2.2
 fi
 
 echo "▶ applying overlay (RN source) …"

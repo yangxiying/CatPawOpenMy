@@ -102,9 +102,14 @@ class NodeServiceImpl {
     getBaseUrl(): Promise<string> {
         return Promise.resolve('bridge://local');
     }
+
+    getBundleUri(): string {
+        return this.bundleUri;
+    }
 }
 
-export default new NodeServiceImpl();
+const nodeService = new NodeServiceImpl();
+export default nodeService;
 
 /** React 组件：包裹隐藏 WebView，需挂载在 App 里 */
 export function NodeWebView() {
@@ -113,12 +118,11 @@ export function NodeWebView() {
     const wvRef = useRef<WebViewNodeRef>(null);
 
     useEffect(() => {
-        NodeServiceImpl.prototype.wvRef = null as any;
-        NodeServiceImpl.prototype.setWebViewRef(wvRef.current);
+        nodeService.setWebViewRef(wvRef.current);
     }, []);
 
     useEffect(() => {
-        NodeServiceImpl.prototype.init();
+        nodeService.init();
     }, []);
 
     const handleReady = useCallback((port: number) => {
@@ -134,15 +138,14 @@ export function NodeWebView() {
         setLogs(l => [...l.slice(-19), msg]);
     }, []);
 
-    if (!NodeServiceImpl.prototype.bundleUri) {
-        // 先下载 bundle 再渲染 WebView
+    if (!nodeService.getBundleUri()) {
         return null;
     }
 
     return (
         <WebViewNode
             ref={wvRef}
-            bundleUri={NodeServiceImpl.prototype.bundleUri}
+            bundleUri={nodeService.getBundleUri()}
             polyfillCode={polyfillCode}
             onReady={handleReady}
             onError={handleError}
