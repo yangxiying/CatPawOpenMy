@@ -129,16 +129,23 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
         }
     }, [bundleCode, configCode, onReady, onError, onLog]);
 
-    // polyfillCode 是 JS 字符串（function POLYFILL_SOURCE() { ... } 的源码）
-    // 需要定义 + 立即执行。外层 try/catch 兜底
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
+    const polyfillCodeRef = useRef(polyfillCode);
+
+    // WebView 加载完成后注入 polyfill（inline script 在 iOS WKWebView 有时不执行）
+    const handleLoad = useCallback(() => {
+        onLog?.('WebView loaded, injecting polyfill...');
+        wvRef.current?.injectJavaScript(`
 try {
-${polyfillCode}
+${polyfillCodeRef.current}
 POLYFILL_SOURCE();
 } catch(e) {
     try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'polyfill exec: '+e})); } catch {}
 }
-</script></body></html>`;
+true;
+`);
+    }, [onLog]);
+
+    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
 
     return (
         <View style={styles.hidden}>
@@ -148,6 +155,7 @@ POLYFILL_SOURCE();
                 style={styles.webview}
                 originWhitelist={['*']}
                 onMessage={handleMessage}
+                onLoad={handleLoad}
                 javaScriptEnabled
                 allowFileAccess
                 allowUniversalAccessFromFileURLs
