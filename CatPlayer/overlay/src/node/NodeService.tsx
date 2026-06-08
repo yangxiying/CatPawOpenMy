@@ -134,7 +134,8 @@ class NodeServiceImpl {
     private wvRef: WebViewNodeRef | null = null;
     private logCbs: Cb<string>[] = [];
     private errCbs: Cb<string>[] = [];
-    private bundleUri: string = '';
+    private bundleCode: string = '';
+    private configCode: string = '';
     private readyResolve: (() => void) | null = null;
     private readyPromise: Promise<void>;
     private ready = false;
@@ -175,7 +176,8 @@ class NodeServiceImpl {
         this.started = false;
         this.ready = false;
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
-        this.bundleUri = '';
+        this.bundleCode = '';
+        this.configCode = '';
         this.init();
     }
 
@@ -185,7 +187,8 @@ class NodeServiceImpl {
         this.started = false;
         this.ready = false;
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
-        this.bundleUri = '';
+        this.bundleCode = '';
+        this.configCode = '';
         // 清除已下载的文件
         try {
             const dir = Platform.OS === 'ios'
@@ -237,7 +240,9 @@ class NodeServiceImpl {
             } else {
                 this.log('cache hit');
             }
-            this.bundleUri = `file://${idxPath}`;
+            // 读入内存供 WebView 直接注入（绕过 file:// fetch CORS 限制）
+            this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
+            this.configCode = await RNFS.readFile(`${dir}/index.config.js`, 'utf8');
             this.renderTrigger?.();
         } catch (e: any) {
             this.error(String(e?.message || e));
@@ -264,8 +269,12 @@ class NodeServiceImpl {
         return Promise.resolve('bridge://local');
     }
 
-    getBundleUri(): string {
-        return this.bundleUri;
+    getBundleCode(): string {
+        return this.bundleCode;
+    }
+
+    getConfigCode(): string {
+        return this.configCode;
     }
 
     getRefreshCount(): number {
@@ -310,8 +319,8 @@ export function NodeWebView() {
         setLogs(l => [...l.slice(-19), msg]);
     }, []);
 
-    const uri = nodeService.getBundleUri();
-    if (!uri) {
+    const code = nodeService.getBundleCode();
+    if (!code) {
         return null;
     }
 
@@ -319,7 +328,8 @@ export function NodeWebView() {
         <WebViewNode
             key={nodeService.getRefreshCount()}
             ref={setWvRef}
-            bundleUri={uri}
+            bundleCode={code}
+            configCode={nodeService.getConfigCode()}
             polyfillCode={polyfillCode}
             onReady={handleReady}
             onError={handleError}

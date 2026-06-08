@@ -412,6 +412,16 @@ globalThis.__dirname = '/';
 globalThis.module = { exports: {} };
 globalThis.exports = globalThis.module.exports;
 
+// ============================================================
+// 11. catServerFactory / catDartServerPort
+// ============================================================
+globalThis.catServerFactory = function catServerFactory(handle) {
+    return createServerPolyfill(handle);
+};
+globalThis.catDartServerPort = function catDartServerPort() {
+    return 0;
+};
+
 console.log('[polyfill] Node.js polyfills loaded (WebView)');
 
 // 通知 RN polyfill 已就绪，可以注入 bundle

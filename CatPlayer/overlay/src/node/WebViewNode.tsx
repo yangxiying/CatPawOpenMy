@@ -13,14 +13,15 @@ export interface WebViewNodeRef {
 }
 
 interface Props {
-    bundleUri: string;            // file:// URI 或 http URL 指向下载好的 index.js
+    bundleCode: string;           // index.js 源码
+    configCode: string;           // index.config.js 源码
     polyfillCode: string;         // polyfill.js 内容（base64 编码的 JS 字符串）
     onReady?: (port: number) => void;
     onError?: (msg: string) => void;
     onLog?: (msg: string) => void;
 }
 
-const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleUri, polyfillCode, onReady, onError, onLog }, ref) => {
+const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode, polyfillCode, onReady, onError, onLog }, ref) => {
     const wvRef = useRef<WebView>(null);
     const readyRef = useRef(false);
 
@@ -38,12 +39,11 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleUri, polyfillCode
         switch (msg.type) {
             case 'ready':
                 onLog?.('WebView polyfill ready');
-                // 注入下载并启动 bundle 的脚本
+                // 注入 bundleCode + configCode 直接执行
                 wvRef.current?.injectJavaScript(`
                     (async () => {
                         try {
-                            const res = await fetch('${bundleUri}');
-                            const code = await res.text();
+                            const code = ${JSON.stringify(bundleCode)};
                             const fn = new Function('require', 'module', 'exports', '__filename', '__dirname', code);
                             const m = { exports: {} };
                             fn(globalThis.require, m, m.exports, '/main.js', '/');
@@ -51,8 +51,7 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleUri, polyfillCode
                             if (mod.start) {
                                 const config = { default: {} };
                                 try {
-                                    const cfgRes = await fetch('${bundleUri}'.replace('index.js','index.config.js'));
-                                    const cfgCode = await cfgRes.text();
+                                    const cfgCode = ${JSON.stringify(configCode)};
                                     const cfgFn = new Function('exports','module',cfgCode);
                                     const cfgM = {exports:{}};
                                     cfgFn(cfgM.exports, cfgM);
@@ -113,7 +112,7 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleUri, polyfillCode
             default:
                 handleWebViewMessage(e);
         }
-    }, [bundleUri, onReady, onError, onLog]);
+    }, [bundleCode, configCode, onReady, onError, onLog]);
 
     // polyfillCode 是 JS 字符串，通过 injectedJavaScript 注入
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>${polyfillCode}</script></body></html>`;
