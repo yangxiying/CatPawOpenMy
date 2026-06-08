@@ -203,6 +203,19 @@ function httpRequestPolyfill(url, options) {
 }
 
 // ============================================================
+// 5b. http/https module (供 require('http') 使用)
+// ============================================================
+function httpPolyfill() {
+    return {
+        createServer: createServerPolyfill,
+        request: httpRequestPolyfill,
+        get: (url, opts) => { const r = httpRequestPolyfill(url, { ...opts, method: 'GET' }); r.end(); return r; },
+        METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
+        STATUS_CODES: { 200: 'OK', 404: 'Not Found', 500: 'Internal Server Error' },
+    };
+}
+
+// ============================================================
 // 6. crypto polyfill (Web Crypto API)
 // ============================================================
 function cryptoPolyfill() {
@@ -406,8 +419,12 @@ try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' }));
 
 } // ← end POLYFILL_SOURCE()
 
-// 自执行：在 WebView 中设置 polyfill
-POLYFILL_SOURCE();
+// 自执行：在 WebView 中设置 polyfill，捕获错误并报告给 RN
+try {
+    POLYFILL_SOURCE();
+} catch (e) {
+    try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'error', error: 'polyfill init: ' + String(e) })); } catch {}
+}
 
 // 当被 Metro require() 时以字符串形式导出源码
 if (typeof module !== 'undefined' && module.exports) {

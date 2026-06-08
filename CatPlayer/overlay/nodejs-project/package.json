@@ -2,5 +2,7 @@
     "name": "catplayer-node",
     "version": "1.0.0",
     "main": "main.js",
-    "dependencies": {}
+    "dependencies": {
+        "crypto-js": "^4.1.1"
+    }
 }

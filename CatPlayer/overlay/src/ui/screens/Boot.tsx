@@ -37,16 +37,14 @@ export default function Boot() {
                 {logs.map((l, i) => <Text key={i} style={styles.log}>• {l}</Text>)}
                 {err ? <Text style={styles.errtxt}>{err}</Text> : null}
             </ScrollView>
-            {err && (
-                <View style={styles.row}>
-                    <TouchableOpacity style={styles.btn} onPress={() => { NodeService.retry(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
-                        <Text style={styles.btnt}>重试</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.refresh(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
-                        <Text style={styles.btnt}>强制刷新源</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
+            <View style={styles.row}>
+                <TouchableOpacity style={styles.btn} onPress={() => { NodeService.retry(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
+                    <Text style={styles.btnt}>重试</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.refresh(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
+                    <Text style={styles.btnt}>强制刷新源</Text>
+                </TouchableOpacity>
+            </View>
         </View>
     );
 }

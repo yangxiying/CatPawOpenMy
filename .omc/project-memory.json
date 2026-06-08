@@ -1,0 +1,75 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1780889602827,
+  "projectRoot": "/Users/yangxiying/Documents/data/my-project/CatPawOpenMy",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "CatPlayer": {
+      "path": "CatPlayer",
+      "purpose": null,
+      "fileCount": 7,
+      "lastAccessed": 1780889602662,
+      "keyFiles": [
+        "CLAUDE.md",
+        "README.md",
+        "build-ipa.sh",
+        "patch.js",
+        "setup.sh"
+      ]
+    },
+    "nodejs": {
+      "path": "nodejs",
+      "purpose": null,
+      "fileCount": 11,
+      "lastAccessed": 1780889602663,
+      "keyFiles": [
+        "babel.config.cjs",
+        "esbuild-config.js",
+        "esbuild.js",
+        "nodemon.json",
+        "package-lock.json"
+      ]
+    },
+    "CatPlayer/app": {
+      "path": "CatPlayer/app",
+      "purpose": "Application code",
+      "fileCount": 16,
+      "lastAccessed": 1780889602684,
+      "keyFiles": [
+        "App.tsx",
+        "Gemfile",
+        "README.md"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
