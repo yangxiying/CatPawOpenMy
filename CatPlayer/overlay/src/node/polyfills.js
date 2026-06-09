@@ -419,7 +419,7 @@ const MODULES = {
     'events': EVENT_MODULE,
     'stream': { Stream: EventEmitterPolyfill, Readable: EventEmitterPolyfill, Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); } },
     'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), constants: {} },
-    'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']), lookup: (h, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } cb && cb(null, '127.0.0.1', 4); } },
+    'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']), lookup: (h, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } cb && cb(null, '127.0.0.1', 4); }, setDefaultResultOrder: () => {}, getDefaultResultOrder: () => 'ipv4first' },
     'tls': { TLSSocket: EventEmitterPolyfill, connect: () => ({ on: () => {} }) },
     'tty': { isatty: () => false },
     'net': { Socket: EventEmitterPolyfill, createConnection: () => ({ on: () => {}, pipe: () => {} }), connect: () => ({ on: () => {} }) },
