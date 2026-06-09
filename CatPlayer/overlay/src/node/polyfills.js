@@ -448,6 +448,7 @@ const MODULES = {
         inherits: (ctor, superCtor) => { if (!ctor || !superCtor) { if (ctor) ctor.prototype = {}; return; } const proto = superCtor.prototype || {}; ctor.super_ = superCtor; ctor.prototype = Object.create(proto, { constructor: { value: ctor, enumerable: false, configurable: true } }); },
         promisify: (fn) => (...a) => new Promise((res, rej) => fn(...a, (e, r) => e ? rej(e) : res(r))),
         deprecate: (fn) => fn,
+        debuglog: (section) => { return function(msg, ...args) { console.log(`[${section}]`, typeof msg === 'string' ? msg : inspect(msg), ...args); }; },
         types: { isDate: (v) => v instanceof Date, isRegExp: (v) => v instanceof RegExp, isArray: Array.isArray, isBoolean: (v) => typeof v === 'boolean', isNumber: (v) => typeof v === 'number', isString: (v) => typeof v === 'string', isFunction: (v) => typeof v === 'function', isObject: (v) => v !== null && typeof v === 'object', isPrimitive: (v) => v === null || !['object','function'].includes(typeof v) },
         callbackify: (fn) => (...a) => { const cb = a.pop(); fn(...a).then(r => cb(null, r)).catch(e => cb(e)); },
         TextDecoder: globalThis.TextDecoder,
