@@ -381,7 +381,7 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
             onReady={handleReady}
             onError={handleError}
             onLog={handleLog}
-            visible={forcedVisible ?? nodeService.isWebsiteSource}
+            visible={nodeService.isWebsiteSource ? true : (forcedVisible ?? false)}
             onPlay={handlePlay}
         />
     );
