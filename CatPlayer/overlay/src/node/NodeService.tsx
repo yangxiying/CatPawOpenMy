@@ -208,6 +208,28 @@ class NodeServiceImpl {
         await this.init();
     }
 
+    /** 强制重新下载 bundle（清除 MD5 缓存 + 本地文件） */
+    async forceRefresh() {
+        this.log('forceRefresh: clearing cache…');
+        this.refreshCount++;
+        this.started = false;
+        this.ready = false;
+        this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
+        this.bundleCode = '';
+        this.configCode = '';
+        try {
+            const dir = Platform.OS === 'ios'
+                ? `${RNFS.DocumentDirectoryPath}/catplayer`
+                : `${RNFS.DocumentDirectoryPath}/catplayer`;
+            await RNFS.unlink(`${dir}/index.js`).catch(() => {});
+            await RNFS.unlink(`${dir}/index.config.js`).catch(() => {});
+            await RNFS.unlink(`${dir}/.md5`).catch(() => {});
+            await RNFS.unlink(`${dir}/index.md5`).catch(() => {});
+            this.log('forceRefresh: cache cleared');
+        } catch (e) { this.log(`forceRefresh: clear error: ${e}`); }
+        await this.init();
+    }
+
     async init() {
         if (this.started) return;
         this.started = true;
@@ -222,25 +244,46 @@ class NodeServiceImpl {
             const md5CachePath = `${dir}/.md5`;
 
             const md5Url = SOURCE.base + '/index.js.md5';
+            this.log(`fetching remote md5: ${md5Url}`);
             await this.downloadFile(md5Url, dir, 'index.md5');
             const wantMd5 = (await RNFS.readFile(`${dir}/index.md5`, 'utf8')).trim();
+            this.log(`remote md5: ${wantMd5}`);
 
             let cachedMd5 = '';
-            try { cachedMd5 = await RNFS.readFile(md5CachePath, 'utf8'); } catch {}
+            try { cachedMd5 = (await RNFS.readFile(md5CachePath, 'utf8')).trim(); } catch {}
+            this.log(`cached md5: ${cachedMd5 || '(none)'}`);
+
             const idxExists = await RNFS.exists(idxPath).catch(() => false);
+            this.log(`local index.js exists: ${idxExists}`);
+
             let localOk = false;
+            let localMd5 = '';
             if (idxExists) {
                 try {
                     const content = await RNFS.readFile(idxPath, 'utf8');
-                    const localMd5 = md5(content).trim();
+                    localMd5 = md5(content).trim();
                     if (localMd5 === wantMd5) localOk = true;
-                } catch (e) { }
+                    this.log(`local file md5: ${localMd5} (match=${localOk})`);
+                } catch (e) { this.log(`local md5 compute error: ${e}`); }
             }
-            if (cachedMd5.trim() !== wantMd5 || !localOk) {
+
+            const needDownload = cachedMd5 !== wantMd5 || !localOk;
+            this.log(`need download: ${needDownload} (md5Match=${cachedMd5 === wantMd5}, localOk=${localOk})`);
+
+            if (needDownload) {
                 this.log('downloading index.js…');
                 await this.downloadFile(SOURCE.base + '/index.js', dir, 'index.js');
                 await this.downloadFile(SOURCE.base + '/index.config.js', dir, 'index.config.js');
                 await RNFS.writeFile(md5CachePath, wantMd5, 'utf8');
+                // Verify downloaded file
+                try {
+                    const dlContent = await RNFS.readFile(idxPath, 'utf8');
+                    const dlMd5 = md5(dlContent).trim();
+                    this.log(`downloaded md5: ${dlMd5} (expected: ${wantMd5}, match=${dlMd5 === wantMd5})`);
+                    if (dlMd5 !== wantMd5) {
+                        this.log('WARNING: downloaded file MD5 mismatch!');
+                    }
+                } catch {}
                 this.log('verified & cached');
             } else {
                 this.log('cache hit');
@@ -250,6 +293,10 @@ class NodeServiceImpl {
             this._isWebsiteSource = this.bundleCode.includes('globalThis.websiteBundle');
             this.log(`bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
             if (this._isWebsiteSource) this.log('  类型: 网站源（website source）');
+            // Log bundle type indicator
+            const hasAvvioRequire = this.bundleCode.includes('require("avvio")');
+            const hasAvvioInline = this.bundleCode.includes('avvio');
+            this.log(`bundle: external require("avvio")=${hasAvvioRequire}, avvio inline=${hasAvvioInline}`);
             this.log('triggering WebView render…');
             this.renderTrigger?.();
             this.log('WebView render triggered');

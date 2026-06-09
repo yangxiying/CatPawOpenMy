@@ -50,8 +50,8 @@ export default function Boot() {
                 <TouchableOpacity style={styles.btn} onPress={() => { NodeService.retry(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
                     <Text style={styles.btnt}>重试</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.refresh(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
-                    <Text style={styles.btnt}>强制刷新源</Text>
+                <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.forceRefresh(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
+                    <Text style={styles.btnt}>强制重新下载</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btn3]} onPress={async () => {
                     const text = logs.join('\n') + (err ? '\n' + err : '');

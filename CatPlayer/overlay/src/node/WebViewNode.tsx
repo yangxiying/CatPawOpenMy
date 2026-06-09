@@ -95,8 +95,20 @@ var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMes
 try {
     const bCode = ${JSON.stringify(bundleCode)};
     _log('website eval start, len=' + bCode.length);
-    var __req = window.__catpaw_require || globalThis.require || window.require || function(n) { return {}; };
+    var __req = window.__catpaw_require || globalThis.require || window.require;
+    if (typeof __req !== 'function') {
+        throw new Error('require not available (type=' + typeof __req + ', catpaw=' + typeof window.__catpaw_require + ', global=' + typeof globalThis.require + ')');
+    }
     _log('require type=' + typeof __req);
+    // Pre-flight: verify polyfill provides required modules
+    var _required = ['http','https','stream','util','zlib','events'];
+    for (var i = 0; i < _required.length; i++) {
+        var _m = __req(_required[i]);
+        if (!_m || typeof _m !== 'object') {
+            _log('WARN: require("' + _required[i] + '") returned ' + typeof _m);
+        }
+    }
+    _log('polyfill modules OK');
     var __fn = new Function('require', 'module', 'exports', '__filename', '__dirname', bCode);
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
@@ -140,10 +152,31 @@ try {
 var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
 try {
     _log('bundle eval start, len=${bCode.length}');
-    const code = ${JSON.stringify(bCode)};
+    // Pre-flight: verify polyfill provides required modules
+    var __req = window.__catpaw_require || globalThis.require;
+    if (typeof __req !== 'function') {
+        throw new Error('require not available (type=' + typeof __req + ')');
+    }
+    var _required = ['http','https','stream','util','zlib','events'];
+    for (var i = 0; i < _required.length; i++) {
+        var _m = __req(_required[i]);
+        if (!_m || typeof _m !== 'object') {
+            _log('WARN: require("' + _required[i] + '") returned ' + typeof _m);
+        }
+    }
+    _log('polyfill modules OK');
+    // Check for external require calls that polyfill can't handle
+    var _code = ${JSON.stringify(bCode)};
+    var _extReqs = _code.match(/require\\("([^"]+)"\\)/g) || [];
+    var _extModules = _extReqs.map(function(r){ return r.match(/require\\("([^"]+)"\\)/)[1]; });
+    var _unsupported = _extModules.filter(function(m) { return _required.indexOf(m) === -1 && !__req(m); });
+    if (_unsupported.length > 0) {
+        _log('WARN: unsupported external requires: ' + _unsupported.join(', '));
+    }
+    const code = _code;
     const fn = new Function('require', 'module', 'exports', '__filename', '__dirname', code);
     const m = { exports: {} };
-    fn(window.__catpaw_require || globalThis.require, m, m.exports, '/main.js', '/');
+    fn(__req, m, m.exports, '/main.js', '/');
     _log('bundle fn executed, exports=' + (typeof m.exports));
     const mod = m.exports.default || m.exports;
     _log('mod.start=' + (typeof mod.start));
