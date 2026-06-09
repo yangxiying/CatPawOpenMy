@@ -23,11 +23,11 @@ _log('polyfill start');
 // ============================================================
 globalThis.global = globalThis;
 globalThis.process = globalThis.process || {
-    env: { NODE_ENV: 'production', NODE_PATH: '/data', DEV_HTTP_PORT: '0' },
+    env: { NODE_ENV: 'production', NODE_PATH: '/data', DEV_HTTP_PORT: '0', CI: undefined, DEBUG: undefined, HTTPS_PROXY: undefined, HTTP_PROXY: undefined, JEST_WORKER_ID: undefined, NODE_DEBUG: undefined, NODE_V8_COVERAGE: undefined, NO_PROXY: undefined, UNDICI_NO_FG: undefined, http_proxy: undefined, https_proxy: undefined, no_proxy: undefined },
     cwd: () => '/',
     nextTick: (fn, ...args) => setTimeout(() => fn(...args), 0),
     version: 'v18.20.4',
-    versions: { node: '18.20.4', v8: '11.3', modules: '108' },
+    versions: { node: '18.20.4', v8: '11.3', modules: '108', icu: '72.1' },
     platform: 'darwin',
     arch: 'arm64',
     argv: ['node', 'main.js'],
@@ -90,6 +90,7 @@ if (!globalThis.Buffer) {
     };
     globalThis.Buffer.isBuffer = (obj) => obj instanceof Buffer;
     globalThis.Buffer.byteLength = (str) => new TextEncoder().encode(str).length;
+    globalThis.Buffer.isView = (obj) => obj instanceof ArrayBuffer || obj instanceof DataView || (obj && obj.buffer instanceof ArrayBuffer);
 }
 
 // ============================================================
@@ -417,19 +418,26 @@ const MODULES = {
     'http': { default: httpPolyfill(), ...httpPolyfill() },
     'https': { default: httpPolyfill(), ...httpPolyfill() },
     'events': EVENT_MODULE,
-    'stream': { Stream: EventEmitterPolyfill, Readable: EventEmitterPolyfill, Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); } },
-    'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), constants: {} },
+    'stream': { Stream: EventEmitterPolyfill, Readable: Object.assign(EventEmitterPolyfill, { from: (iterable) => new EventEmitterPolyfill() }), Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); }, addAbortSignal: (signal, stream) => stream },
+    'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createInflateRaw: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), createDeflateRaw: () => new EventEmitterPolyfill(), createGzip: () => new EventEmitterPolyfill(), constants: {}, Z_NO_FLUSH: 0, Z_PARTIAL_FLUSH: 1, Z_SYNC_FLUSH: 2, Z_FULL_FLUSH: 3, Z_FINISH: 4, Z_BLOCK: 5, Z_OK: 0, Z_STREAM_END: 1, Z_NEED_DICT: 2, Z_ERRNO: -1, Z_STREAM_ERROR: -2, Z_DATA_ERROR: -3, Z_MEM_ERROR: -4, Z_BUF_ERROR: -5, Z_VERSION_ERROR: -6, Z_NO_COMPRESSION: 0, Z_BEST_SPEED: 1, Z_BEST_COMPRESSION: 9, Z_DEFAULT_COMPRESSION: -1, Z_FILTERED: 1, Z_HUFFMAN_ONLY: 2, Z_RLE: 3, Z_FIXED: 4, Z_DEFAULT_STRATEGY: 0, Z_DEFLATED: 8, Z_NULL: 0, Z_DEFAULT_WINDOWBITS: 15 },
     'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']), lookup: (h, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } cb && cb(null, '127.0.0.1', 4); }, setDefaultResultOrder: () => {}, getDefaultResultOrder: () => 'ipv4first' },
     'tls': { TLSSocket: EventEmitterPolyfill, connect: () => ({ on: () => {} }) },
     'tty': { isatty: () => false },
-    'net': { Socket: EventEmitterPolyfill, createConnection: () => ({ on: () => {}, pipe: () => {} }), connect: () => ({ on: () => {} }) },
+    'net': { Socket: EventEmitterPolyfill, createConnection: () => ({ on: () => {}, pipe: () => {} }), connect: () => ({ on: () => {} }), isIP: (addr) => { if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(addr)) return 4; if (addr.includes(':')) return 6; return 0; }, isIPv4: (addr) => /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(addr), isIPv6: (addr) => addr.includes(':') },
     'os': { platform: () => 'darwin', homedir: () => '/var/mobile', tmpdir: () => '/tmp', type: () => 'Darwin', arch: () => 'arm64', hostname: () => 'CatPlayer', cpus: () => [{ model: 'Apple' }], totalmem: () => 6000000000, freemem: () => 3000000000, uptime: () => 0, networkInterfaces: () => ({}) },
     'path': pathPolyfill(),
     'url': urlPolyfill(),
     'fs': fsPolyfill(),
     'constants': {},
     'diagnostics_channel': { channel: (name) => ({ publish: () => {}, subscribe: () => ({ unsubscribe: () => {} }) }) },
-    'worker_threads': {},
+    'async_hooks': { AsyncLocalStorage: class AsyncLocalStorage { getStore() { return this._store; } run(store, cb, ...args) { this._store = store; return cb(...args); } }, AsyncResource: class AsyncResource { constructor(type) { this.type = type; } runInAsyncScope(cb, ...args) { return cb(...args); } emitDestroy() {} } },
+    'http2': { createSecureServer: () => new EventEmitterPolyfill(), createServer: () => new EventEmitterPolyfill(), constants: {}, Http2ServerRequest: EventEmitterPolyfill, Http2ServerResponse: EventEmitterPolyfill },
+    'perf_hooks': { performance: globalThis.performance || { now: () => Date.now(), timing: { navigationStart: 0 } }, PerformanceObserver: class PerformanceObserver { constructor() {} observe() {} disconnect() {} } },
+    'console': globalThis.console || { log: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {} },
+    'vm': { createContext: (ctx) => ctx || {}, Script: class Script { constructor(code) { this.code = code; } runInContext(ctx) { return new Function('return ' + this.code)(); } } },
+    'string_decoder': { StringDecoder: class StringDecoder { constructor(encoding) { this.encoding = encoding || 'utf8'; } write(buffer) { return buffer.toString(this.encoding); } end(buffer) { return this.write(buffer); } } },
+    'querystring': { parse: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; }, stringify: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), encode: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), decode: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; } },
+    'worker_threads': { parentPort: null, workerData: {}, isMainThread: true, threadId: 0, markAsUncloneable: () => {} },
     'child_process': {},
     'fs/promises': { access: () => Promise.resolve(), readFile: () => Promise.reject(new Error('fs/promises not available')), writeFile: () => Promise.resolve(), mkdir: () => Promise.resolve(), unlink: () => Promise.resolve(), readdir: () => Promise.resolve([]), stat: () => Promise.resolve({}) },
     'assert': (() => {
@@ -451,14 +459,14 @@ const MODULES = {
         inherits: (ctor, superCtor) => { if (!ctor || !superCtor) { if (ctor) ctor.prototype = {}; return; } const proto = superCtor.prototype || {}; ctor.super_ = superCtor; ctor.prototype = Object.create(proto, { constructor: { value: ctor, enumerable: false, configurable: true } }); },
         promisify: (fn) => (...a) => new Promise((res, rej) => fn(...a, (e, r) => e ? rej(e) : res(r))),
         deprecate: (fn) => fn,
-        debuglog: (section) => { return function(msg, ...args) { console.log(`[${section}]`, typeof msg === 'string' ? msg : inspect(msg), ...args); }; },
+        debuglog: (section) => { const self = MODULES.util; return function(msg, ...args) { console.log(`[${section}]`, typeof msg === 'string' ? msg : self.inspect(msg), ...args); }; },
         types: { isDate: (v) => v instanceof Date, isRegExp: (v) => v instanceof RegExp, isArray: Array.isArray, isBoolean: (v) => typeof v === 'boolean', isNumber: (v) => typeof v === 'number', isString: (v) => typeof v === 'string', isFunction: (v) => typeof v === 'function', isObject: (v) => v !== null && typeof v === 'object', isPrimitive: (v) => v === null || !['object','function'].includes(typeof v) },
         callbackify: (fn) => (...a) => { const cb = a.pop(); fn(...a).then(r => cb(null, r)).catch(e => cb(e)); },
         TextDecoder: globalThis.TextDecoder,
         TextEncoder: globalThis.TextEncoder,
     },
-    'module': { Module: class Module { static _resolveFilename() { return ''; } static _cache = {}; _compile() {} } },
-    'buffer': { Buffer: globalThis.Buffer, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
+    'module': { Module: class Module { static _resolveFilename() { return ''; } static _cache = {}; _compile() {} }, createRequire: (filename) => customRequire },
+    'buffer': { Buffer: globalThis.Buffer, Blob: class Blob { constructor(parts, opts) { this._parts = parts || []; this.type = opts?.type || ''; } async arrayBuffer() { return new ArrayBuffer(0); } get size() { return 0; } slice() { return new Blob(); } stream() { return new EventEmitterPolyfill(); } text() { return Promise.resolve(''); } }, File: class File extends (globalThis.Blob || Blob) { constructor(parts, name, opts) { super(parts, opts); this.name = name; this.lastModified = opts?.lastModified || Date.now(); } }, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
 };
 
 function customRequire(moduleName) {
