@@ -428,6 +428,7 @@ const MODULES = {
     'url': urlPolyfill(),
     'fs': fsPolyfill(),
     'constants': {},
+    'diagnostics_channel': { channel: (name) => ({ publish: () => {}, subscribe: () => ({ unsubscribe: () => {} }) }) },
     'worker_threads': {},
     'child_process': {},
     'fs/promises': { access: () => Promise.resolve(), readFile: () => Promise.reject(new Error('fs/promises not available')), writeFile: () => Promise.resolve(), mkdir: () => Promise.resolve(), unlink: () => Promise.resolve(), readdir: () => Promise.resolve([]), stat: () => Promise.resolve({}) },
