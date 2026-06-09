@@ -37,6 +37,7 @@ const CDN_SCRIPTS = `
 const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode, polyfillCode, onReady, onError, onLog, visible, onPlay }, ref) => {
     const wvRef = useRef<WebView>(null);
     const readyRef = useRef(false);
+    const readyHandledRef = useRef(false);
     const isWebsite = bundleCode.includes('globalThis.websiteBundle');
 
     const postToWv = useCallback((msg: string) => {
@@ -86,88 +87,59 @@ window.__POLYFILL_DONE = 1;
         onLog?.(`msg from WebView: ${msg.type}`);
         switch (msg.type) {
             case 'ready':
+                if (readyHandledRef.current) { onLog?.('ready: already handled, skip'); break; }
+                readyHandledRef.current = true;
                 onLog?.('WebView polyfill ready');
                 if (isWebsite) {
-                    // 网站源：new Function bundle → websiteBundle() → new Function inner → render
                     wvRef.current?.injectJavaScript(`
 (async () => {
 var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
 try {
-    const bCode = ${JSON.stringify(bundleCode)};
-    _log('website eval start, len=' + bCode.length);
+    _log('website eval start');
     var __req = window.__catpaw_require || globalThis.require || window.require;
-    if (typeof __req !== 'function') {
-        throw new Error('require not available (type=' + typeof __req + ', catpaw=' + typeof window.__catpaw_require + ', global=' + typeof globalThis.require + ')');
-    }
-    _log('require type=' + typeof __req);
-    // Pre-flight: verify polyfill provides required modules
-    var _required = ['http','https','stream','util','zlib','events'];
-    for (var i = 0; i < _required.length; i++) {
-        var _m = __req(_required[i]);
-        if (!_m || typeof _m !== 'object') {
-            _log('WARN: require("' + _required[i] + '") returned ' + typeof _m);
+    if (typeof __req !== 'function') { throw new Error('require not available'); }
+    var _origCR = ReactDOM.createRoot;
+    ReactDOM.createRoot = function(c) {
+        if (!c) {
+            var alt = document.getElementById('www') || document.getElementById('root');
+            if (!alt) { alt = document.createElement('div'); document.body.appendChild(alt); }
+            _log('createRoot(null) → fallback: id='+(alt.id||'(none)')+' tag='+alt.tagName);
+            c = alt;
         }
-    }
-    _log('polyfill modules OK');
-    var _origCreateRoot = ReactDOM.createRoot;
-    ReactDOM.createRoot = function(container) {
-        if (!container) {
-            _log('WARN: createRoot called with null/undefined container! stack=' + (new Error().stack || '').split('\\n').slice(0,4).join(' | '));
-            container = document.getElementById('www') || document.getElementById('root') || document.body.firstChild || document.body;
-            _log('fallback container: id=' + (container.id||'(none)') + ' tag=' + container.tagName);
-        }
-        return _origCreateRoot.call(this, container);
+        return _origCR.call(this, c);
     };
-    var _origGetById = document.getElementById.bind(document);
-    document.getElementById = function(id) {
-        var el = _origGetById(id);
-        if (!el) { _log('WARN: getElementById("' + id + '") returned null'); }
-        return el;
-    };
-    var __fn = new Function('require', 'module', 'exports', '__filename', '__dirname', bCode);
+    var __fn = new Function('require','module','exports','__filename','__dirname', ${JSON.stringify(bundleCode)});
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
-    _log('websiteBundle=' + (typeof globalThis.websiteBundle));
     if (typeof globalThis.websiteBundle === 'undefined') { throw new Error('not a website source'); }
-    const innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
-    _log('inner len=' + innerCode.length);
-    _log('inner first 200: ' + innerCode.slice(0, 200));
-    var createRootCalls = innerCode.match(/createRoot\s*\(/g);
-    _log('createRoot calls in inner: ' + (createRootCalls ? createRootCalls.length : 0));
-    var getElCalls = innerCode.match(/getElementById\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
-    _log('getElementById calls: ' + JSON.stringify(getElCalls));
+    var innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
+    _log('innerCode len=' + innerCode.length);
     var lastIdx = innerCode.lastIndexOf('})()');
-    _log('lastIdx of })() = ' + lastIdx);
+    if (lastIdx < 0) { throw new Error('cannot find })() patch point'); }
     var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
-    _log('patched inner first 200: ' + patched.slice(0, 200));
-    _log('patched inner around lastIdx: ' + patched.slice(Math.max(0, lastIdx - 80), lastIdx + 80));
-    var __fn2 = new Function('require', 'module', 'exports', '__filename', '__dirname', patched);
+    var __fn2 = new Function('require','module','exports','__filename','__dirname', patched);
     var __m2 = { exports: {} };
-    _log('about to execute inner fn2...');
     __fn2(__req, __m2, __m2.exports, '/main.js', '/');
-    _log('inner fn2 executed OK');
-    document.getElementById = _origGetById;
-    ReactDOM.createRoot = _origCreateRoot;
+    _log('inner fn2 ok');
+    ReactDOM.createRoot = _origCR;
     var ws = globalThis.__WS; delete globalThis.__WS;
-    _log('ws exports: ' + (ws ? Object.keys(ws).join(',') : 'undefined'));
+    _log('ws keys: ' + (ws ? Object.keys(ws).join(',') : 'null'));
     if (ws && typeof ws.renderClient === 'function') {
         var app = ws.renderClient();
-        _log('renderClient returned: ' + typeof app);
         if (app != null) {
             var www = document.getElementById('www') || document.getElementById('root');
             if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
-            _log('rendering to container: id=' + (www.id||'(none)'));
             if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
             else { ReactDOM.createRoot(www).render(app); }
         }
-        _log('website rendered');
-        window.ReactNativeWebView.postMessage(JSON.stringify({type:'websiteReady', port:1}));
+        _log('rendered OK');
+        window.ReactNativeWebView?.postMessage(JSON.stringify({type:'websiteReady', port:1}));
     } else {
-        _log('no renderClient in ws exports');
+        _log('no renderClient');
     }
 } catch(e) {
-    _log('website error: ' + (e && e.stack ? e.stack : String(e)));
-    try { window.ReactNativeWebView.postMessage(JSON.stringify({type:'error',error:String(e)})); } catch(ee) {}
+    _log('ERROR: ' + (e && e.stack ? e.stack : String(e)));
+    window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:String(e)}));
 }
 })();
 `);
