@@ -22,11 +22,19 @@ type Route = { name: string; params?: any };
 
 export default function App() {
     const [stack, setStack] = useState<Route[]>([{ name: 'Boot' }]);
+    const [isWebSrc, setIsWebSrc] = useState(NodeService.isWebsiteSource);
     const nav = useMemo<Nav>(() => ({
         push: (name, params) => setStack(s => [...s, { name, params }]),
         pop: () => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)),
         replace: (name, params) => setStack(s => [...s.slice(0, -1), { name, params }]),
     }), []);
+
+    useEffect(() => {
+        const off = NodeService.onLog(() => {
+            if (NodeService.isWebsiteSource !== isWebSrc) setIsWebSrc(NodeService.isWebsiteSource);
+        });
+        return off;
+    }, [isWebSrc]);
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
@@ -50,10 +58,10 @@ export default function App() {
     const Screen = SCREENS[cur.name] || Boot;
     const canBack = stack.length > 1;
     const isPlayer = cur.name === 'Player';
+    const showWebView = isWebSrc && !isPlayer;
 
     return (
         <NavContext.Provider value={nav}>
-            <NodeWebView visible={NodeService.isWebsiteSource && !isPlayer} />
             <SafeAreaView style={styles.root}>
                 <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
                 {!isPlayer && (
@@ -69,6 +77,7 @@ export default function App() {
                     <Screen {...(cur.params || {})} />
                 </View>
             </SafeAreaView>
+            <NodeWebView visible={showWebView} />
         </NavContext.Provider>
     );
 }
