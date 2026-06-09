@@ -554,11 +554,15 @@ window.addEventListener('message', (event) => {
 // 10. 注入
 // ============================================================
 globalThis.Buffer = globalThis.Buffer || globalThis.Buffer;
-globalThis.require = customRequire;
 globalThis.__filename = 'main.js';
 globalThis.__dirname = '/';
 globalThis.module = { exports: {} };
 globalThis.exports = globalThis.module.exports;
+
+// require 注入：多重保障，确保 WebView 各执行上下文都能访问
+try { Object.defineProperty(globalThis, 'require', { value: customRequire, writable: true, configurable: true }); } catch { try { globalThis.require = customRequire; } catch {} }
+try { window.require = customRequire; } catch {}
+try { self.require = customRequire; } catch {}
 
 // ============================================================
 // 11. catServerFactory / catDartServerPort

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity, ScrollView, StyleSheet, Clipboard } from 'react-native';
 import NodeService from '../../node/NodeService';
 import { CatApi } from '../../api/CatApi';
 import { useNav } from '../App';
@@ -8,6 +8,7 @@ export default function Boot() {
     const nav = useNav();
     const [logs, setLogs] = useState<string[]>([]);
     const [err, setErr] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
 
     const go = async () => {
         setErr(null);
@@ -52,6 +53,14 @@ export default function Boot() {
                 <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.refresh(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
                     <Text style={styles.btnt}>强制刷新源</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={[styles.btn, styles.btn3]} onPress={async () => {
+                    const text = logs.join('\n') + (err ? '\n' + err : '');
+                    await Clipboard.setString(text);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                }}>
+                    <Text style={styles.btnt}>{copied ? '已复制' : '复制日志'}</Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -66,5 +75,6 @@ const styles = StyleSheet.create({
     row: { flexDirection: 'row', marginTop: 18, gap: 12 },
     btn: { backgroundColor: '#2a2f45', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 8 },
     btn2: { backgroundColor: '#3a2f45' },
+    btn3: { backgroundColor: '#2a4535' },
     btnt: { color: '#fff', fontSize: 15 },
 });
