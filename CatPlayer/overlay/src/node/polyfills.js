@@ -470,12 +470,16 @@ const MODULES = {
 };
 
 function customRequire(moduleName) {
-    if (MODULES[moduleName]) return MODULES[moduleName];
-    // Try without 'node:' prefix
-    const stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
-    if (stripped && MODULES[stripped]) return MODULES[stripped];
-    // console.warn('[polyfill] require(' + moduleName + ') → stub');
-    return {};
+    var mod = MODULES[moduleName];
+    if (!mod) {
+        var stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
+        if (stripped) mod = MODULES[stripped];
+    }
+    if (!mod) mod = {};
+    // Babel __esModule interop: ensure every module has __esModule and default
+    if (!mod.__esModule) mod.__esModule = true;
+    if (!mod.default) mod.default = mod;
+    return mod;
 }
 
 // ============================================================
