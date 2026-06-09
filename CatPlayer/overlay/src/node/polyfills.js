@@ -71,6 +71,8 @@ if (!globalThis.Buffer) {
             b.fill(fill);
             return b;
         }
+        static allocUnsafe(size) { return Buffer.alloc(size); }
+        static allocUnsafeSlow(size) { return Buffer.alloc(size); }
         static concat(buffers) {
             let total = 0;
             for (const b of buffers) total += b.length;
