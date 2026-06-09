@@ -95,6 +95,7 @@ var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMes
 try {
     const bCode = ${JSON.stringify(bundleCode)};
     _log('website eval start, len=' + bCode.length);
+    var require = globalThis.require || window.require || function(n) { return {}; };
     eval(bCode);
     _log('websiteBundle=' + (typeof globalThis.websiteBundle));
     if (typeof globalThis.websiteBundle !== 'function') { throw new Error('not a website source'); }
@@ -102,6 +103,7 @@ try {
     _log('inner len=' + innerCode.length);
     var lastIdx = innerCode.lastIndexOf('})()');
     var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
+    var require = globalThis.require || window.require || function(n) { return {}; };
     eval(patched);
     var ws = globalThis.__WS; delete globalThis.__WS;
     _log('ws exports: ' + (ws ? Object.keys(ws).join(',') : 'undefined'));
