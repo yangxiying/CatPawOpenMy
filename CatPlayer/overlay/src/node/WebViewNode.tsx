@@ -51,7 +51,7 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
     // 构建 HTML
     const html = useMemo(() => {
         if (isWebsite) {
-            return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>${CDN_SCRIPTS}</head><body><div id="www"></div><script>
+            return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>${CDN_SCRIPTS}</head><body><div id="root"></div><div id="www"></div><script>
 (function(){
 var _log=function(m){try{window.ReactNativeWebView.postMessage(JSON.stringify({type:'log',msg:m}))}catch(e){}};
 function check(){
@@ -127,7 +127,8 @@ try {
         var app = ws.renderClient();
         _log('renderClient returned: ' + typeof app);
         if (app != null) {
-            var www = document.getElementById('www');
+            var www = document.getElementById('www') || document.getElementById('root');
+            if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
             if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
             else { ReactDOM.createRoot(www).render(app); }
         }
