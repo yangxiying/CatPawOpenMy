@@ -88,23 +88,26 @@ window.__POLYFILL_DONE = 1;
             case 'ready':
                 onLog?.('WebView polyfill ready');
                 if (isWebsite) {
-                    // 网站源：eval bundle → websiteBundle() → eval inner → render
+                    // 网站源：new Function bundle → websiteBundle() → new Function inner → render
                     wvRef.current?.injectJavaScript(`
 (async () => {
 var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
 try {
     const bCode = ${JSON.stringify(bundleCode)};
     _log('website eval start, len=' + bCode.length);
-    var require = globalThis.require || window.require || function(n) { return {}; };
-    eval(bCode);
+    var __req = globalThis.require || window.require || function(n) { return {}; };
+    var __fn = new Function('require', 'module', 'exports', '__filename', '__dirname', bCode);
+    var __m = { exports: {} };
+    __fn(__req, __m, __m.exports, '/main.js', '/');
     _log('websiteBundle=' + (typeof globalThis.websiteBundle));
     if (typeof globalThis.websiteBundle !== 'function') { throw new Error('not a website source'); }
     const innerCode = globalThis.websiteBundle();
     _log('inner len=' + innerCode.length);
     var lastIdx = innerCode.lastIndexOf('})()');
     var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
-    var require = globalThis.require || window.require || function(n) { return {}; };
-    eval(patched);
+    var __fn2 = new Function('require', 'module', 'exports', '__filename', '__dirname', patched);
+    var __m2 = { exports: {} };
+    __fn2(__req, __m2, __m2.exports, '/main.js', '/');
     var ws = globalThis.__WS; delete globalThis.__WS;
     _log('ws exports: ' + (ws ? Object.keys(ws).join(',') : 'undefined'));
     if (ws && typeof ws.renderClient === 'function') {
