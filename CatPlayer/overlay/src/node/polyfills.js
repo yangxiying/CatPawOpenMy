@@ -296,10 +296,11 @@ function httpRequestPolyfill(url, options) {
 // ============================================================
 function httpPolyfill() {
     const Agent = class Agent extends EventEmitterPolyfill {
-        constructor() { super(); }
+        constructor(opts) { super(); this.options = Object.assign({ rejectUnauthorized: false, keepAlive: true }, opts || {}); }
         createConnection() { return {}; }
         destroy() {}
     };
+    const globalAgent = new Agent();
     return {
         createServer: createServerPolyfill,
         request: httpRequestPolyfill,
@@ -307,7 +308,7 @@ function httpPolyfill() {
         METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
         STATUS_CODES: { 200: 'OK', 404: 'Not Found', 500: 'Internal Server Error' },
         Agent,
-        globalAgent: new Agent(),
+        globalAgent,
         maxHeaderSize: 16384,
     };
 }
@@ -415,8 +416,8 @@ function fsPolyfill() {
 // 8. require polyfill
 // ============================================================
 const MODULES = {
-    'http': { default: httpPolyfill(), ...httpPolyfill() },
-    'https': { default: httpPolyfill(), ...httpPolyfill() },
+    'http': (() => { const m = httpPolyfill(); m.default = m; m.__esModule = true; return m; })(),
+    'https': (() => { const m = httpPolyfill(); m.default = m; m.__esModule = true; return m; })(),
     'events': EVENT_MODULE,
     'stream': { Stream: EventEmitterPolyfill, Readable: Object.assign(EventEmitterPolyfill, { from: (iterable) => new EventEmitterPolyfill() }), Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); }, addAbortSignal: (signal, stream) => stream },
     'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createInflateRaw: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), createDeflateRaw: () => new EventEmitterPolyfill(), createGzip: () => new EventEmitterPolyfill(), constants: {}, Z_NO_FLUSH: 0, Z_PARTIAL_FLUSH: 1, Z_SYNC_FLUSH: 2, Z_FULL_FLUSH: 3, Z_FINISH: 4, Z_BLOCK: 5, Z_OK: 0, Z_STREAM_END: 1, Z_NEED_DICT: 2, Z_ERRNO: -1, Z_STREAM_ERROR: -2, Z_DATA_ERROR: -3, Z_MEM_ERROR: -4, Z_BUF_ERROR: -5, Z_VERSION_ERROR: -6, Z_NO_COMPRESSION: 0, Z_BEST_SPEED: 1, Z_BEST_COMPRESSION: 9, Z_DEFAULT_COMPRESSION: -1, Z_FILTERED: 1, Z_HUFFMAN_ONLY: 2, Z_RLE: 3, Z_FIXED: 4, Z_DEFAULT_STRATEGY: 0, Z_DEFLATED: 8, Z_NULL: 0, Z_DEFAULT_WINDOWBITS: 15 },
