@@ -18,21 +18,70 @@ const NAME = 'CatPlayer';
 const read = (p) => fs.readFileSync(p, 'utf8');
 const write = (p, c) => { fs.writeFileSync(p, c); console.log('  patched', path.relative(APP, p)); };
 
-// 1) Info.plist
+// 1) Info.plist — UIBackgroundModes + NSAppTransportSecurity
 (() => {
     const p = path.join(IOS, NAME, 'Info.plist');
     if (!fs.existsSync(p)) { console.warn('  ! Info.plist not found'); return; }
     let s = read(p);
-    if (s.includes('<key>UIBackgroundModes</key>')) { console.log('  Info.plist already patched'); return; }
-    const inject =
-        '\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>audio</string>\n\t</array>\n' +
-        '\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n\t</dict>\n';
-    if (/<\/dict>\s*<\/plist>\s*$/.test(s)) {
-        s = s.replace(/<\/dict>\s*<\/plist>\s*$/, inject + '</dict>\n</plist>\n');
-        write(p, s);
+    let changed = false;
+
+    // 1a) UIBackgroundModes=audio
+    if (!s.includes('<key>UIBackgroundModes</key>')) {
+        const inject = '\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>audio</string>\n\t</array>\n';
+        if (/<\/dict>\s*<\/plist>\s*$/.test(s)) {
+            s = s.replace(/<\/dict>\s*<\/plist>\s*$/, inject + '</dict>\n</plist>\n');
+            changed = true;
+        } else {
+            console.warn('  ! Info.plist closing tags not matched');
+        }
     } else {
-        console.warn('  ! Info.plist closing tags not matched');
+        console.log('  Info.plist UIBackgroundModes already present');
     }
+
+    // 1b) NSAppTransportSecurity — 确保只有一个，且 NSAllowsArbitraryLoads=true
+    //     处理三种情况：不存在 / 已存在但 false / 已存在且 true
+    if (s.includes('<key>NSAppTransportSecurity</key>')) {
+        // 检查是否已有 NSAllowsArbitraryLoads=true
+        const atsBlock = s.match(/<key>NSAppTransportSecurity<\/key>\s*<dict>([\s\S]*?)<\/dict>/);
+        if (atsBlock) {
+            const block = atsBlock[0];
+            if (block.includes('<false/>')) {
+                // 已有 ATS 但 NSAllowsArbitraryLoads=false，改为 true
+                s = s.replace(block, block.replace('<false/>', '<true/>'));
+                changed = true;
+                console.log('  Info.plist: fixed NSAllowsArbitraryLoads false→true');
+            } else {
+                console.log('  Info.plist NSAppTransportSecurity already OK');
+            }
+        }
+        // 检查是否有重复的 NSAppTransportSecurity 键（patch.js 旧版 bug 产生的）
+        const atsMatches = s.match(/<key>NSAppTransportSecurity<\/key>/g);
+        if (atsMatches && atsMatches.length > 1) {
+            // 移除最后一个重复的 NSAppTransportSecurity 块
+            const lastIdx = s.lastIndexOf('<key>NSAppTransportSecurity</key>');
+            const afterBlock = s.indexOf('</dict>', lastIdx);
+            if (afterBlock !== -1) {
+                const endPos = afterBlock + '</dict>'.length;
+                const dupBlock = s.slice(lastIdx, endPos);
+                // 包含可能的换行
+                const nextChar = s[endPos];
+                const extraLen = (nextChar === '\n') ? 1 : 0;
+                s = s.slice(0, lastIdx) + s.slice(endPos + extraLen);
+                changed = true;
+                console.log('  Info.plist: removed duplicate NSAppTransportSecurity block');
+            }
+        }
+    } else {
+        // 没有 ATS 块，注入一个
+        const inject = '\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n\t</dict>\n';
+        if (/<\/dict>\s*<\/plist>\s*$/.test(s)) {
+            s = s.replace(/<\/dict>\s*<\/plist>\s*$/, inject + '</dict>\n</plist>\n');
+            changed = true;
+        }
+    }
+
+    if (changed) write(p, s);
+    else console.log('  Info.plist: no changes needed');
 })();
 
 // 2) AppDelegate — AVAudioSession playback
