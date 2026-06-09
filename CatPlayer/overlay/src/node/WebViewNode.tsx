@@ -109,6 +109,21 @@ try {
         }
     }
     _log('polyfill modules OK');
+    var _origCreateRoot = ReactDOM.createRoot;
+    ReactDOM.createRoot = function(container) {
+        if (!container) {
+            _log('WARN: createRoot called with null/undefined container! stack=' + (new Error().stack || '').split('\\n').slice(0,4).join(' | '));
+            container = document.getElementById('www') || document.getElementById('root') || document.body.firstChild || document.body;
+            _log('fallback container: id=' + (container.id||'(none)') + ' tag=' + container.tagName);
+        }
+        return _origCreateRoot.call(this, container);
+    };
+    var _origGetById = document.getElementById.bind(document);
+    document.getElementById = function(id) {
+        var el = _origGetById(id);
+        if (!el) { _log('WARN: getElementById("' + id + '") returned null'); }
+        return el;
+    };
     var __fn = new Function('require', 'module', 'exports', '__filename', '__dirname', bCode);
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
@@ -116,11 +131,23 @@ try {
     if (typeof globalThis.websiteBundle === 'undefined') { throw new Error('not a website source'); }
     const innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
     _log('inner len=' + innerCode.length);
+    _log('inner first 200: ' + innerCode.slice(0, 200));
+    var createRootCalls = innerCode.match(/createRoot\s*\(/g);
+    _log('createRoot calls in inner: ' + (createRootCalls ? createRootCalls.length : 0));
+    var getElCalls = innerCode.match(/getElementById\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
+    _log('getElementById calls: ' + JSON.stringify(getElCalls));
     var lastIdx = innerCode.lastIndexOf('})()');
+    _log('lastIdx of })() = ' + lastIdx);
     var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
+    _log('patched inner first 200: ' + patched.slice(0, 200));
+    _log('patched inner around lastIdx: ' + patched.slice(Math.max(0, lastIdx - 80), lastIdx + 80));
     var __fn2 = new Function('require', 'module', 'exports', '__filename', '__dirname', patched);
     var __m2 = { exports: {} };
+    _log('about to execute inner fn2...');
     __fn2(__req, __m2, __m2.exports, '/main.js', '/');
+    _log('inner fn2 executed OK');
+    document.getElementById = _origGetById;
+    ReactDOM.createRoot = _origCreateRoot;
     var ws = globalThis.__WS; delete globalThis.__WS;
     _log('ws exports: ' + (ws ? Object.keys(ws).join(',') : 'undefined'));
     if (ws && typeof ws.renderClient === 'function') {
@@ -129,6 +156,7 @@ try {
         if (app != null) {
             var www = document.getElementById('www') || document.getElementById('root');
             if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
+            _log('rendering to container: id=' + (www.id||'(none)'));
             if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
             else { ReactDOM.createRoot(www).render(app); }
         }
