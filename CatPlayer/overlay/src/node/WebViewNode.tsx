@@ -95,7 +95,8 @@ var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMes
 try {
     const bCode = ${JSON.stringify(bundleCode)};
     _log('website eval start, len=' + bCode.length);
-    var __req = globalThis.require || window.require || function(n) { return {}; };
+    var __req = window.__catpaw_require || globalThis.require || window.require || function(n) { return {}; };
+    _log('require type=' + typeof __req);
     var __fn = new Function('require', 'module', 'exports', '__filename', '__dirname', bCode);
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
@@ -142,7 +143,7 @@ try {
     const code = ${JSON.stringify(bCode)};
     const fn = new Function('require', 'module', 'exports', '__filename', '__dirname', code);
     const m = { exports: {} };
-    fn(globalThis.require, m, m.exports, '/main.js', '/');
+    fn(window.__catpaw_require || globalThis.require, m, m.exports, '/main.js', '/');
     _log('bundle fn executed, exports=' + (typeof m.exports));
     const mod = m.exports.default || m.exports;
     _log('mod.start=' + (typeof mod.start));

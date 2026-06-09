@@ -560,6 +560,8 @@ globalThis.module = { exports: {} };
 globalThis.exports = globalThis.module.exports;
 
 // require 注入：多重保障，确保 WebView 各执行上下文都能访问
+// 使用自定义属性名避免被浏览器/引擎拦截
+window.__catpaw_require = customRequire;
 try { Object.defineProperty(globalThis, 'require', { value: customRequire, writable: true, configurable: true }); } catch { try { globalThis.require = customRequire; } catch {} }
 try { window.require = customRequire; } catch {}
 try { self.require = customRequire; } catch {}
