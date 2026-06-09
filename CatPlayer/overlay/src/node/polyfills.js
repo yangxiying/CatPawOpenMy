@@ -479,6 +479,10 @@ function customRequire(moduleName) {
     // Babel __esModule interop: ensure every module has __esModule and default
     if (!mod.__esModule) mod.__esModule = true;
     if (!mod.default) mod.default = mod;
+    // Diagnostic: log first few unusual requires
+    if (moduleName === 'node:https' || moduleName === 'https') {
+        _log('require(' + moduleName + ') => keys=' + Object.keys(mod).join(',') + ' default=' + (typeof mod.default));
+    }
     return mod;
 }
 
