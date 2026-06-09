@@ -113,8 +113,8 @@ try {
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
     _log('websiteBundle=' + (typeof globalThis.websiteBundle));
-    if (typeof globalThis.websiteBundle !== 'function') { throw new Error('not a website source'); }
-    const innerCode = globalThis.websiteBundle();
+    if (typeof globalThis.websiteBundle === 'undefined') { throw new Error('not a website source'); }
+    const innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
     _log('inner len=' + innerCode.length);
     var lastIdx = innerCode.lastIndexOf('})()');
     var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
