@@ -383,14 +383,15 @@ function cryptoPolyfill() {
 // 7. fs polyfill (最小化)
 // ============================================================
 function fsPolyfill() {
+    function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
     return {
         existsSync: () => false,
-        readFileSync: () => { throw new Error('fs.readFileSync not available in WebView'); },
-        writeFileSync: () => { throw new Error('fs.writeFileSync not available in WebView'); },
+        readFileSync: () => { throw enoent('ENOENT: no such file or directory, read'); },
+        writeFileSync: () => {},
         mkdirSync: () => {},
         mkdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
-        statSync: () => { throw new Error('fs.statSync not available'); },
-        stat: (path, cb) => { process.nextTick(() => cb(new Error('ENOENT'))); },
+        statSync: () => { throw enoent('ENOENT: no such file or directory, stat'); },
+        stat: (path, cb) => { process.nextTick(() => cb(enoent())); },
         readdirSync: () => [],
         openSync: () => -1,
         open: (path, flags, mode, cb) => { if (typeof mode === 'function') { cb = mode; } process.nextTick(() => cb(null, -1)); },
@@ -409,6 +410,16 @@ function fsPolyfill() {
         ftruncateSync: () => {},
         realpathSync: (p) => p,
         access: (path, mode, cb) => { if (typeof mode === 'function') { cb = mode; } if (cb) process.nextTick(cb); },
+        readFile: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(enoent())); },
+        unlink: (path, cb) => { if (cb) process.nextTick(() => cb(enoent())); },
+        unlinkSync: () => {},
+        readdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(null, [])); },
+        rename: (oldPath, newPath, cb) => { if (cb) process.nextTick(cb); },
+        copyFile: (src, dest, cb) => { if (cb) process.nextTick(cb); },
+        appendFile: (path, data, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
+        watch: (path, opts, cb) => ({ on: () => {}, close: () => {} }),
+        exists: (path, cb) => { if (cb) process.nextTick(() => cb(false)); },
+        promises: undefined,
     };
 }
 
@@ -440,7 +451,34 @@ const MODULES = {
     'querystring': { parse: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; }, stringify: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), encode: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), decode: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; } },
     'worker_threads': { parentPort: null, workerData: {}, isMainThread: true, threadId: 0, markAsUncloneable: () => {} },
     'child_process': {},
-    'fs/promises': { access: () => Promise.resolve(), readFile: () => Promise.reject(new Error('fs/promises not available')), writeFile: () => Promise.resolve(), mkdir: () => Promise.resolve(), unlink: () => Promise.resolve(), readdir: () => Promise.resolve([]), stat: () => Promise.resolve({}) },
+    'fs/promises': (() => {
+        function enoent() { const e = new Error('ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+        return {
+            access: (path) => Promise.reject(enoent()),
+            readFile: (path, opts) => {
+                if (opts && opts.encoding) return Promise.reject(enoent());
+                return Promise.reject(enoent());
+            },
+            writeFile: (path, data, opts) => Promise.resolve(),
+            mkdir: (path, opts) => Promise.resolve(),
+            unlink: (path) => Promise.reject(enoent()),
+            readdir: (path) => Promise.resolve([]),
+            stat: (path) => Promise.reject(enoent()),
+            lstat: (path) => Promise.reject(enoent()),
+            rename: (oldPath, newPath) => Promise.resolve(),
+            copyFile: (src, dest) => Promise.resolve(),
+            rmdir: (path) => Promise.reject(enoent()),
+            chmod: (path, mode) => Promise.resolve(),
+            appendFile: (path, data, opts) => Promise.resolve(),
+            open: (path, flags, mode) => Promise.reject(enoent()),
+            watch: (path, opts) => ({ on: () => {}, close: () => {} }),
+            exists: (path) => Promise.resolve(false),
+            readlink: (path) => Promise.reject(enoent()),
+            symlink: (target, path, type) => Promise.resolve(),
+            truncate: (path, len) => Promise.resolve(),
+            utimes: (path, atime, mtime) => Promise.resolve(),
+        };
+    })(),
     'assert': (() => {
         function assert(val, msg) { if (!val) throw new Error(msg || 'Assertion failed'); }
         assert.ok = assert;
