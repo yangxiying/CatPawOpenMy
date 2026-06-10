@@ -34,7 +34,7 @@ function isTabRoot(name: string): boolean {
 
 export default function App() {
     const [stack, setStack] = useState<Route[]>([{ name: 'Boot' }]);
-    const [isWebSrc, setIsWebSrc] = useState(NodeService.isWebsiteSource);
+    const [isWebSrc, setIsWebSrc] = useState(false);
     const [activeTab, setActiveTab] = useState('home');
 
     const nav = useMemo<Nav>(() => ({
@@ -43,12 +43,14 @@ export default function App() {
         replace: (name, params) => setStack(s => [...s.slice(0, -1), { name, params }]),
     }), []);
 
+    /** 启动 NodeService 并监听源类型变化 */
     useEffect(() => {
+        NodeService.init();
         const off = NodeService.onLog(() => {
-            if (NodeService.isWebsiteSource !== isWebSrc) setIsWebSrc(NodeService.isWebsiteSource);
+            setIsWebSrc(NodeService.isWebsiteSource);
         });
         return off;
-    }, [isWebSrc]);
+    }, []);
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
@@ -84,9 +86,10 @@ export default function App() {
 
     return (
         <NavContext.Provider value={nav}>
-            {/* 网站源：只显示全屏 WebView */}
-            {showWebView && <NodeWebView visible={true} />}
+            {/* NodeWebView 始终挂载（隐藏时 1x1px），负责执行 bundle */}
+            <NodeWebView visible={showWebView} />
 
+            {/* 网站源：不显示原生 UI（WebView 全屏） */}
             {/* 服务源：显示正常原生 UI */}
             {!showWebView && (
                 <SafeAreaView style={styles.root}>

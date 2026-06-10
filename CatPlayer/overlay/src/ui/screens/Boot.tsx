@@ -9,6 +9,7 @@ export default function Boot() {
     const [logs, setLogs] = useState<string[]>([]);
     const [err, setErr] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [done, setDone] = useState(false);
 
     const go = async () => {
         setErr(null);
@@ -22,21 +23,28 @@ export default function Boot() {
     };
 
     useEffect(() => {
-        const offLog = NodeService.onLog(m => setLogs(l => [...l.slice(-9), m]));
+        const offLog = NodeService.onLog(m => {
+            setLogs(l => [...l.slice(-9), m]);
+            if (NodeService.isWebsiteSource) {
+                setDone(true);
+            }
+        });
         const offErr = NodeService.onError(m => setErr(m));
-        NodeService.init();
-        const timeout = setTimeout(() => setErr('等待超时（60s）— WebView 未就绪'), 60000);
+        const timeout = setTimeout(() => {
+            if (!done) setErr('等待超时（60s）— WebView 未就绪');
+        }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
             if (NodeService.isWebsiteSource) {
-                // 网站源：WebView 已显示全屏 UI，不需跳转到 Sites
-                setLogs(l => [...l, '网站源已加载完成']);
+                setDone(true);
             } else {
                 go();
             }
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
         return () => { offLog(); offErr(); clearTimeout(timeout); };
     }, []);
+
+    if (done) return null;
 
     return (
         <View style={styles.c}>
