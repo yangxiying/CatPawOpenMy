@@ -8,11 +8,13 @@ async function post(api: string, action: string, body?: any): Promise<any> {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body || {}),
     });
+    NodeService?.log?.(`[CatApi] POST ${api}/${action} status=${res.status} bodyLen=${res.body?.length} preview=${String(res.body).slice(0,120)}`);
     try { return JSON.parse(res.body); } catch { return res.body; }
 }
 
 async function get(path: string): Promise<any> {
     const res = await NodeService.request({ method: 'GET', url: path });
+    NodeService?.log?.(`[CatApi] GET ${path} status=${res.status} bodyLen=${res.body?.length} type=${typeof res.body} preview=${String(res.body).slice(0,200)}`);
     try { return JSON.parse(res.body); } catch { return res.body; }
 }
 
