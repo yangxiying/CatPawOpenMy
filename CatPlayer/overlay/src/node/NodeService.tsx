@@ -22,6 +22,16 @@ try {
     }
 }
 
+// 内嵌爬虫服务 bundle（CI 构建 nodejs/ 后内联）。存在则本地运行服务源，
+// 不再下载远程"网站源"（cloud-drive 配置页）。
+let embeddedSpiderCode = '';
+let embeddedSpiderConfig = '';
+try {
+    const m = require('./spider-bundle-string');
+    embeddedSpiderCode = m.spiderBundleCode || '';
+    embeddedSpiderConfig = m.spiderConfigCode || '';
+} catch {}
+
 // 简易 MD5 实现
 function md5(str: string) {
     function toUtf8(s: string) {
@@ -250,6 +260,20 @@ class NodeServiceImpl {
         if (this.started) return;
         this.started = true;
         this.log(`init start (polyfillCode len=${polyfillCode.length})`);
+
+        // 优先使用内嵌爬虫服务 bundle（服务源），跳过远程网站源下载
+        if (embeddedSpiderCode) {
+            this.bundleCode = embeddedSpiderCode;
+            this.configCode = embeddedSpiderConfig;
+            this.setIsWebsiteSource(false);
+            this.log(`embedded spider server (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
+            this.log('  类型: 服务源（embedded spider server）');
+            this.log('triggering WebView render…');
+            this.renderTrigger?.();
+            this.log('WebView render triggered');
+            return;
+        }
+
         this.log('downloading source…');
         try {
             const dir = Platform.OS === 'ios'

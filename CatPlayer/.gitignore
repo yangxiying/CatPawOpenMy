@@ -7,6 +7,10 @@ node_modules/
 .DS_Store
 ios/build/
 
+# 构建时生成的内联源码模块（每次 setup.sh 重新生成）
+overlay/src/node/polyfill-string.ts
+overlay/src/node/spider-bundle-string.ts
+
 .atomcode/
 .codegraph/
 .cursor/
