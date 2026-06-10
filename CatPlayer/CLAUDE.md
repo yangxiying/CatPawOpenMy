@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CatPlayer — React Native iOS 播放器，运行 CatVod/CatPaw 静态 Node.js 爬虫源（4.47MB CJS），通过 WebView + Node.js API polyfill 执行，支持视频/音频播放、全屏横屏、后台续播。
+CatPlayer — React Native iOS 播放器，运行 CatVod/CatPaw 源 ，通过 WebView + Node.js API polyfill 执行，支持视频/音频播放、全屏横屏、后台续播。
 
 ## Commands
 

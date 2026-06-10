@@ -1,8 +1,6 @@
-# CatPlayer — CatVod 兼容 iOS 播放器
+# CatPlayer — React Native iOS 播放器
 
-运行 CatVod/CatPaw 静态 Node.js 爬虫源的 React Native iOS 播放器。
-源 bundle（4.47MB CJS）在隐藏 WebView 中执行，通过 Node API polyfill + postMessage 桥通信。
-加源 → 浏览 → 播视频/音频，支持**全屏自动横屏**与**后台/息屏续播声音**。
+运行 CatVod/CatPaw 源 ，通过 WebView + Node.js API polyfill 执行，支持视频/音频播放、全屏横屏、后台续播。
 
 ## 快速开始
 
