@@ -101,6 +101,15 @@ ICONS
     echo "  icon: $(ls "$ICON_DST"/icon-*.png | wc -l) files"
 fi
 
+echo "▶ copying native player modules …"
+NATIVE_SRC="$HERE/overlay/ios"
+NATIVE_DST="$APP_DIR/ios/$NAME"
+if [ -d "$NATIVE_SRC" ]; then
+    cp "$NATIVE_SRC"/*.swift "$NATIVE_DST/" 2>/dev/null || true
+    cp "$NATIVE_SRC"/*.m "$NATIVE_DST/" 2>/dev/null || true
+    echo "  native: $(ls "$NATIVE_SRC"/*.swift "$NATIVE_SRC"/*.m 2>/dev/null | wc -l) files"
+fi
+
 if [ "$SKIP_POD" = "true" ]; then
     echo "⏭ skipping pod install (--skip-pod)"
 else
