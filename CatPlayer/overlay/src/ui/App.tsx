@@ -25,7 +25,7 @@ const SCREENS: Record<string, React.ComponentType<any>> = { Boot, Sites, Categor
 type Route = { name: string; params?: any };
 
 /** Tab 页面名称集合，这些页面显示底部 Tab 栏 */
-const TAB_SCREENS = ['Home', 'Favorites', 'History', 'Settings'];
+const TAB_SCREENS = ['Sites', 'Favorites', 'History', 'Settings'];
 
 /** 判断当前路由是否为 Tab 根页面 */
 function isTabRoot(name: string): boolean {

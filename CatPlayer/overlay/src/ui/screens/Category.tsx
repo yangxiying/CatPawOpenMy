@@ -23,10 +23,10 @@ const SORT_OPTIONS = ['全部', '最新', '最热', '最赞'];
  * 包含分类标签栏、顶部工具按钮行（网格/收藏/搜索/历史/筛选）、
  * 类型/年份/排序三行筛选芯片、以及三列视频卡片网格。
  */
-export default function Category({ site }: { site: Site }) {
+export default function Category({ site, initialClass }: { site: Site; initialClass?: Cls }) {
     const nav = useNav();
     const [classes, setClasses] = useState<Cls[]>([]);
-    const [cid, setCid] = useState<any>(null);
+    const [cid, setCid] = useState<any>(initialClass?.type_id ?? null);
     const [list, setList] = useState<any[]>([]);
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -54,7 +54,9 @@ export default function Category({ site }: { site: Site }) {
                 const home = await CatApi.home(site.api);
                 const cs: Cls[] = home?.class || [];
                 setClasses(cs);
-                if (cs.length) { setCid(cs[0].type_id); }
+                if (initialClass && cs.some((c: Cls) => c.type_id === initialClass.type_id)) {
+                    setCid(initialClass.type_id);
+                } else if (cs.length) { setCid(cs[0].type_id); }
                 else { setMsg('该站点无分类'); }
 
                 /** 从首页响应中提取类型筛选选项 */
