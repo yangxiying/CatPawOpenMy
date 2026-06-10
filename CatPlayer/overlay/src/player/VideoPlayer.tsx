@@ -6,18 +6,14 @@ import { StorageService } from '../storage/StorageService';
 let Video: any = null;
 try { Video = require('react-native-video').default; } catch (e) { /* not installed */ }
 
-const { MPVPlayerModule, MDKPlayerModule } = NativeModules;
+const { MPVPlayerModule, MDKPlayerModule } = NativeModules || ({} as any);
 const mpvEmitter = MPVPlayerModule ? new NativeEventEmitter(MPVPlayerModule) : null;
 const mdkEmitter = MDKPlayerModule ? new NativeEventEmitter(MDKPlayerModule) : null;
 
 let MPVView: any = null;
 let MDKView: any = null;
-try {
-    if (NativeModules.MPVPlayerViewManager) MPVView = requireNativeComponent('MPVPlayerView');
-} catch (e) { /* MPV not available */ }
-try {
-    if (NativeModules.MDKPlayerViewManager) MDKView = requireNativeComponent('MDKPlayerView');
-} catch (e) { /* MDK not available */ }
+try { MPVView = MPVPlayerModule && MPVPlayerModule.ViewManager ? requireNativeComponent('MPVPlayerView') : null; } catch {}
+try { MDKView = MDKPlayerModule && MDKPlayerModule.ViewManager ? requireNativeComponent('MDKPlayerView') : null; } catch {}
 
 type PlayerEngine = 'builtin' | 'mpv' | 'mdk';
 
