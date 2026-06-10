@@ -46,9 +46,11 @@ export default function App() {
     /** 启动 NodeService 并监听源类型变化 */
     useEffect(() => {
         NodeService.init();
-        const off = NodeService.onLog(() => {
-            setIsWebSrc(NodeService.isWebsiteSource);
+        const off = NodeService.onSourceTypeChange((isWeb) => {
+            setIsWebSrc(isWeb);
         });
+        // 立即同步一次当前状态
+        setIsWebSrc(NodeService.isWebsiteSource);
         return off;
     }, []);
 
@@ -81,8 +83,20 @@ export default function App() {
     const Screen = SCREENS[cur.name] || Boot;
     const canBack = stack.length > 1;
     const isPlayer = cur.name === 'Player';
-    const showWebView = isWebSrc && !isPlayer;
+    // 网站源且非播放页时，全屏显示 WebView（直接读取 NodeService，确保与 NodeWebView 同步）
+    const showWebView = NodeService.isWebsiteSource && !isPlayer;
     const showTabBar = !isPlayer && cur.name !== 'Boot' && isTabRoot(cur.name);
+
+    // 网站源下，Boot 页面不需要显示（WebView 会全屏显示网站内容）
+    const isBoot = cur.name === 'Boot';
+    if (showWebView && isBoot) {
+        // 直接返回 WebView，不渲染原生 UI
+        return (
+            <NavContext.Provider value={nav}>
+                <NodeWebView visible={true} />
+            </NavContext.Provider>
+        );
+    }
 
     return (
         <NavContext.Provider value={nav}>

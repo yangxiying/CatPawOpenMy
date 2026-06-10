@@ -301,8 +301,8 @@ true;
 
 const styles = StyleSheet.create({
     hidden: { position: 'absolute', width: 1, height: 1, opacity: 0, top: -9999 },
-    visible: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-    webview: { flex: 1 },
+    visible: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+    webview: { flex: 1, width: '100%', height: '100%' },
 });
 
 export default WebViewNode;

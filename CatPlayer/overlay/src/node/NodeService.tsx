@@ -144,12 +144,25 @@ class NodeServiceImpl {
     private renderTrigger: (() => void) | null = null;
     private refreshCount = 0;
     private playCbs: Cb<{ url: string; title?: string }>[] = [];
+    private sourceTypeCbs: Cb<boolean>[] = [];
 
     constructor() {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
     }
 
     get isWebsiteSource() { return this._isWebsiteSource; }
+
+    onSourceTypeChange(cb: Cb<boolean>) {
+        this.sourceTypeCbs.push(cb);
+        return () => { this.sourceTypeCbs = this.sourceTypeCbs.filter(c => c !== cb); };
+    }
+
+    private setIsWebsiteSource(v: boolean) {
+        if (this._isWebsiteSource !== v) {
+            this._isWebsiteSource = v;
+            this.sourceTypeCbs.forEach(cb => cb(v));
+        }
+    }
 
     waitForReady(): Promise<void> {
         if (this.ready) return Promise.resolve();
@@ -188,6 +201,7 @@ class NodeServiceImpl {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
         this.bundleCode = '';
         this.configCode = '';
+        this.setIsWebsiteSource(false);
         this.init();
     }
 
@@ -198,6 +212,7 @@ class NodeServiceImpl {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
         this.bundleCode = '';
         this.configCode = '';
+        this.setIsWebsiteSource(false);
         try {
             const dir = Platform.OS === 'ios'
                 ? `${RNFS.DocumentDirectoryPath}/catplayer`
@@ -217,6 +232,7 @@ class NodeServiceImpl {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
         this.bundleCode = '';
         this.configCode = '';
+        this.setIsWebsiteSource(false);
         try {
             const dir = Platform.OS === 'ios'
                 ? `${RNFS.DocumentDirectoryPath}/catplayer`
@@ -290,9 +306,10 @@ class NodeServiceImpl {
             }
             this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
             this.configCode = await RNFS.readFile(`${dir}/index.config.js`, 'utf8');
-            this._isWebsiteSource = this.bundleCode.includes('globalThis.websiteBundle');
+            const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
+            this.setIsWebsiteSource(isWeb);
             this.log(`bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
-            if (this._isWebsiteSource) this.log('  类型: 网站源（website source）');
+            if (isWeb) this.log('  类型: 网站源（website source）');
             // Log bundle type indicator
             const hasAvvioRequire = this.bundleCode.includes('require("avvio")');
             const hasAvvioInline = this.bundleCode.includes('avvio');
@@ -381,7 +398,7 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
             onReady={handleReady}
             onError={handleError}
             onLog={handleLog}
-            visible={nodeService.isWebsiteSource ? true : (forcedVisible ?? false)}
+            visible={forcedVisible ?? false}
             onPlay={handlePlay}
         />
     );

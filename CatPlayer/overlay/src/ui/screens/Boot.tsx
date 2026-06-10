@@ -25,9 +25,9 @@ export default function Boot() {
     useEffect(() => {
         const offLog = NodeService.onLog(m => {
             setLogs(l => [...l.slice(-9), m]);
-            if (NodeService.isWebsiteSource) {
-                setDone(true);
-            }
+        });
+        const offSrc = NodeService.onSourceTypeChange(isWeb => {
+            if (isWeb) setDone(true);
         });
         const offErr = NodeService.onError(m => setErr(m));
         const timeout = setTimeout(() => {
@@ -41,7 +41,7 @@ export default function Boot() {
                 go();
             }
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
-        return () => { offLog(); offErr(); clearTimeout(timeout); };
+        return () => { offLog(); offSrc(); offErr(); clearTimeout(timeout); };
     }, []);
 
     if (done) return null;
