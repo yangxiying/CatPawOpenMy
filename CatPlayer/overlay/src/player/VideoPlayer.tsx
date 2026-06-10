@@ -12,8 +12,12 @@ const mdkEmitter = MDKPlayerModule ? new NativeEventEmitter(MDKPlayerModule) : n
 
 let MPVView: any = null;
 let MDKView: any = null;
-try { MPVView = require('react-native').NativeModules.MPVPlayerViewManager ? requireNativeComponent('MPVPlayerView') : null; } catch {}
-try { MDKView = require('react-native').NativeModules.MDKPlayerViewManager ? requireNativeComponent('MDKPlayerView') : null; } catch {}
+try {
+    if (NativeModules.MPVPlayerViewManager) MPVView = requireNativeComponent('MPVPlayerView');
+} catch (e) { /* MPV not available */ }
+try {
+    if (NativeModules.MDKPlayerViewManager) MDKView = requireNativeComponent('MDKPlayerView');
+} catch (e) { /* MDK not available */ }
 
 type PlayerEngine = 'builtin' | 'mpv' | 'mdk';
 
