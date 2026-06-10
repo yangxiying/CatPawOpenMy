@@ -53,6 +53,7 @@ export default function Settings() {
     const [saving, setSaving] = useState(false);
 
     /** 弹窗状态 */
+    const [fullUrl, setFullUrl] = useState('');
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [showPlayerModal, setShowPlayerModal] = useState(false);
     const [showDarkModeModal, setShowDarkModeModal] = useState(false);
@@ -71,6 +72,21 @@ export default function Settings() {
 
         setSourceUrl(url || SOURCE.base);
         setSourceAuth(auth || SOURCE.auth);
+        // 拼接完整 URL 显示（含 auth）
+        const base = url || SOURCE.base;
+        const a = auth || SOURCE.auth;
+        let displayUrl = base;
+        if (a) {
+            try {
+                const decoded = atob(a);
+                const [user, pass] = decoded.split(':');
+                const u = new URL(base);
+                u.username = user || '';
+                u.password = pass || '';
+                displayUrl = u.toString();
+            } catch {}
+        }
+        setFullUrl(displayUrl);
         setPlayerType(pt || 'builtin');
         setDefaultSpeed(sp ?? 1.0);
         setDarkMode(dm || 'system');
@@ -103,14 +119,28 @@ export default function Settings() {
 
     /** 保存播放源并强制刷新 */
     const handleSaveAndReload = useCallback(async () => {
-        if (!sourceUrl.trim()) {
+        if (!fullUrl.trim()) {
             Alert.alert('提示', '播放源地址不能为空');
             return;
         }
         setSaving(true);
         try {
-            await StorageService.setSetting('sourceUrl', sourceUrl.trim());
-            await StorageService.setSetting('sourceAuth', sourceAuth.trim());
+            // 从完整 URL 解析 base + auth
+            let base = fullUrl.trim();
+            let auth = '';
+            try {
+                const u = new URL(base);
+                if (u.username || u.password) {
+                    auth = btoa(decodeURIComponent(u.username) + ':' + decodeURIComponent(u.password));
+                    u.username = '';
+                    u.password = '';
+                    base = u.toString();
+                }
+            } catch {}
+            await StorageService.setSetting('sourceUrl', base);
+            await StorageService.setSetting('sourceAuth', auth);
+            setSourceUrl(base);
+            setSourceAuth(auth);
             await NodeService.forceRefresh();
             Alert.alert('成功', '播放源已保存并重新加载');
         } catch (e: any) {
@@ -118,7 +148,7 @@ export default function Settings() {
         } finally {
             setSaving(false);
         }
-    }, [sourceUrl, sourceAuth]);
+    }, [fullUrl]);
 
     /** 切换播放器类型 */
     const handlePlayerTypeChange = useCallback(async (type: PlayerType) => {
@@ -248,7 +278,7 @@ export default function Settings() {
             {/* ── 配置区域 ── */}
             <View style={styles.section}>
                 {renderSettingRow(
-                    '⚙️', '配置', truncateUrl(sourceUrl),
+                    '⚙️', '配置', truncateUrl(fullUrl || sourceUrl),
                     () => setShowConfigModal(true),
                 )}
                 {renderDivider()}
@@ -320,29 +350,20 @@ export default function Settings() {
                         </View>
 
                         <ScrollView style={modalStyles.body} keyboardShouldPersistTiles="handled">
-                            <Text style={modalStyles.fieldLabel}>Source URL</Text>
+                            <Text style={modalStyles.fieldLabel}>源地址</Text>
                             <TextInput
                                 style={modalStyles.input}
-                                value={sourceUrl}
-                                onChangeText={setSourceUrl}
-                                placeholder="输入播放源地址"
+                                value={fullUrl}
+                                onChangeText={setFullUrl}
+                                placeholder="http://user:pass@host/path/index.js.md5"
                                 placeholderTextColor="#999"
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 keyboardType="url"
                             />
-
-                            <Text style={modalStyles.fieldLabel}>Source Auth</Text>
-                            <TextInput
-                                style={modalStyles.input}
-                                value={sourceAuth}
-                                onChangeText={setSourceAuth}
-                                placeholder="输入认证密钥"
-                                placeholderTextColor="#999"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                secureTextEntry
-                            />
+                            <Text style={{ color: '#999', fontSize: 12, marginTop: 8 }}>
+                                支持 http://user:pass@host/path 格式，用户名密码自动解析
+                            </Text>
                         </ScrollView>
 
                         <View style={modalStyles.footer}>
