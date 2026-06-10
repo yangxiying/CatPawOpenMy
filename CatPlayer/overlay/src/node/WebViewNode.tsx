@@ -184,8 +184,14 @@ try {
             _log('config loaded');
         } catch(e) { _log('config fail: ' + e); console.log('config load failed, using empty'); }
         _log('calling mod.start...');
-        await mod.start(config.default);
-        _log('mod.start returned');
+        try {
+            await mod.start(config.default);
+            _log('mod.start returned OK');
+        } catch(startErr) {
+            _log('mod.start FAILED: ' + (startErr?.stack || String(startErr)));
+            console.error('[WV] mod.start error', startErr);
+            throw startErr;
+        }
     } else {
         _log('ERROR: no mod.start');
     }

@@ -16,6 +16,10 @@ export default function Boot() {
         try {
             await NodeService.getBaseUrl();
             const config = await CatApi.getConfig();
+            const siteCount = config?.video?.sites?.length ?? 0;
+            const allKeys = config ? Object.keys(config) : [];
+            console.log('[Boot] config keys:', allKeys, 'video.sites:', siteCount);
+            setLogs(l => [...l, `config keys=[${allKeys}] video.sites=${siteCount}`]);
             nav.replace('Sites', { config });
         } catch (e: any) {
             setErr(String(e?.message || e));

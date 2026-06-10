@@ -585,7 +585,9 @@ window.addEventListener('message', (event) => {
     const port = msg.port || 18080;
     const handler = HTTP_SERVERS[port];
     if (!handler) {
-        console.warn('[polyfill] no handler for port', port);
+        const keys = Object.keys(HTTP_SERVERS);
+        console.warn('[polyfill] no handler for port', port, 'registered:', keys);
+        try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[polyfill] no handler port='+port+' registered='+keys})); } catch {}
         return;
     }
 
@@ -621,6 +623,10 @@ window.addEventListener('message', (event) => {
     res.write = (chunk) => { resBody += String(chunk); };
     res.end = (chunk) => {
         if (chunk) resBody += String(chunk);
+        // Diagnostic: log /config response length
+        if (msg.url && msg.url.indexOf('/config') >= 0) {
+            try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[polyfill] /config response len=' + resBody.length + ' preview=' + resBody.slice(0, 120)})); } catch {}
+        }
         try {
             window.ReactNativeWebView?.postMessage(JSON.stringify({
                 type: 'response',
@@ -650,7 +656,9 @@ window.addEventListener('message', (event) => {
         try { req.emit('end'); } catch (e) { /* ignore */ }
     });
 
-    try { handler(req, res); } catch (e) {
+    try {
+        handler(req, res);
+    } catch (e) {
         console.error('[polyfill] handler error', e);
         window.ReactNativeWebView?.postMessage(JSON.stringify({
             type: 'response', reqId: msg.reqId, status: 500, headers: {}, body: String(e),
