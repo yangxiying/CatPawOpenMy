@@ -83,14 +83,14 @@ export default function App() {
     const Screen = SCREENS[cur.name] || Boot;
     const canBack = stack.length > 1;
     const isPlayer = cur.name === 'Player';
-    // 网站源且非播放页时，全屏显示 WebView（直接读取 NodeService，确保与 NodeWebView 同步）
-    const showWebView = NodeService.isWebsiteSource && !isPlayer;
+    // 网站源且当前在网站源根页面时，全屏显示 WebView
+    // 只有在网站源且当前页面是 Boot（网站源入口）时才显示 WebView
+    const isBoot = cur.name === 'Boot';
+    const showWebView = NodeService.isWebsiteSource && isBoot && !isPlayer;
     const showTabBar = !isPlayer && cur.name !== 'Boot' && isTabRoot(cur.name);
 
-    // 网站源下，Boot 页面不需要显示（WebView 会全屏显示网站内容）
-    const isBoot = cur.name === 'Boot';
-    if (showWebView && isBoot) {
-        // 直接返回 WebView，不渲染原生 UI
+    // 网站源下，Boot 页面直接返回 WebView，不渲染原生 UI
+    if (showWebView) {
         return (
             <NavContext.Provider value={nav}>
                 <NodeWebView visible={true} />
@@ -101,28 +101,25 @@ export default function App() {
     return (
         <NavContext.Provider value={nav}>
             {/* NodeWebView 始终挂载（隐藏时 1x1px），负责执行 bundle */}
-            <NodeWebView visible={showWebView} />
+            <NodeWebView visible={false} />
 
-            {/* 网站源：不显示原生 UI（WebView 全屏） */}
             {/* 服务源：显示正常原生 UI */}
-            {!showWebView && (
-                <SafeAreaView style={styles.root}>
-                    <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
-                    {!isPlayer && (
-                        <View style={styles.header}>
-                            {canBack ? (
-                                <TouchableOpacity onPress={nav.pop} style={styles.side}><Text style={styles.back}>‹ 返回</Text></TouchableOpacity>
-                            ) : <View style={styles.side} />}
-                            <Text style={styles.title} numberOfLines={1}>{titleOf(cur)}</Text>
-                            <View style={styles.side} />
-                        </View>
-                    )}
-                    <View style={styles.body}>
-                        <Screen {...(cur.params || {})} />
+            <SafeAreaView style={styles.root}>
+                <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
+                {!isPlayer && (
+                    <View style={styles.header}>
+                        {canBack ? (
+                            <TouchableOpacity onPress={nav.pop} style={styles.side}><Text style={styles.back}>‹ 返回</Text></TouchableOpacity>
+                        ) : <View style={styles.side} />}
+                        <Text style={styles.title} numberOfLines={1}>{titleOf(cur)}</Text>
+                        <View style={styles.side} />
                     </View>
-                    {showTabBar && <TabBar activeTab={activeTab} onTabChange={handleTabChange} />}
-                </SafeAreaView>
-            )}
+                )}
+                <View style={styles.body}>
+                    <Screen {...(cur.params || {})} />
+                </View>
+                {showTabBar && <TabBar activeTab={activeTab} onTabChange={handleTabChange} />}
+            </SafeAreaView>
         </NavContext.Provider>
     );
 }

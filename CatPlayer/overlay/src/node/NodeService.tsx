@@ -322,6 +322,18 @@ class NodeServiceImpl {
         }
     }
 
+    /** 切换源地址后重新检测源类型 */
+    async reloadSource() {
+        this.log('reloadSource: re-detecting source type...');
+        this.setIsWebsiteSource(false);
+        this.started = false;
+        this.ready = false;
+        this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
+        this.bundleCode = '';
+        this.configCode = '';
+        await this.init();
+    }
+
     private async downloadFile(url: string, dir: string, filename?: string): Promise<string> {
         const dest = filename ? `${dir}/${filename}` : `${dir}/tmp_${Date.now()}`;
         await RNFS.downloadFile({ fromUrl: url, toFile: dest, headers: { Authorization: `Basic ${SOURCE.auth}` } }).promise;
