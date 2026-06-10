@@ -84,23 +84,28 @@ export default function App() {
 
     return (
         <NavContext.Provider value={nav}>
-            <SafeAreaView style={styles.root}>
-                <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
-                {!isPlayer && (
-                    <View style={styles.header}>
-                        {canBack ? (
-                            <TouchableOpacity onPress={nav.pop} style={styles.side}><Text style={styles.back}>‹ 返回</Text></TouchableOpacity>
-                        ) : <View style={styles.side} />}
-                        <Text style={styles.title} numberOfLines={1}>{titleOf(cur)}</Text>
-                        <View style={styles.side} />
+            {/* 网站源：只显示全屏 WebView */}
+            {showWebView && <NodeWebView visible={true} />}
+
+            {/* 服务源：显示正常原生 UI */}
+            {!showWebView && (
+                <SafeAreaView style={styles.root}>
+                    <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
+                    {!isPlayer && (
+                        <View style={styles.header}>
+                            {canBack ? (
+                                <TouchableOpacity onPress={nav.pop} style={styles.side}><Text style={styles.back}>‹ 返回</Text></TouchableOpacity>
+                            ) : <View style={styles.side} />}
+                            <Text style={styles.title} numberOfLines={1}>{titleOf(cur)}</Text>
+                            <View style={styles.side} />
+                        </View>
+                    )}
+                    <View style={styles.body}>
+                        <Screen {...(cur.params || {})} />
                     </View>
-                )}
-                <View style={styles.body}>
-                    <Screen {...(cur.params || {})} />
-                </View>
-                {showTabBar && <TabBar activeTab={activeTab} onTabChange={handleTabChange} />}
-            </SafeAreaView>
-            <NodeWebView visible={showWebView} />
+                    {showTabBar && <TabBar activeTab={activeTab} onTabChange={handleTabChange} />}
+                </SafeAreaView>
+            )}
         </NavContext.Provider>
     );
 }
