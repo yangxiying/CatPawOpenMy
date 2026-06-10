@@ -83,8 +83,8 @@ export type SourceItem = {
 
 const DEFAULT_SOURCE: SourceItem = {
     id: 'default',
-    name: '内嵌爬虫',
-    url: 'http://cat.xn--4kq62z5rby2qupq9ub.top',  // 匹配 config.ts SOURCE.base → 使用内嵌 spider
+    name: '默认源',
+    url: 'http://wexfnw:wexfnw@cat.xn--4kq62z5rby2qupq9ub.top/index.js.md5',
     isActive: true,
 };
 

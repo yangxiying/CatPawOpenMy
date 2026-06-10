@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, Alert,
-    StyleSheet, ScrollView, Switch, Modal, Platform,
+    StyleSheet, ScrollView, Switch, Modal, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { StorageService } from '../../storage/StorageService';
 import type { SourceItem } from '../../storage/StorageService';
@@ -387,8 +387,9 @@ export default function Settings() {
 
             {/* ═══════ 弹窗：添加/编辑播放源 ═══════ */}
             <Modal visible={showSourceModal} animationType="slide" transparent onRequestClose={() => setShowSourceModal(false)}>
-                <View style={modalStyles.overlay}>
-                    <View style={modalStyles.panel}>
+                <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                    <View style={modalStyles.overlay}>
+                        <View style={[modalStyles.panel, { maxHeight: '60%' }]}>
                         <View style={modalStyles.header}>
                             <Text style={modalStyles.headerTitle}>{editingSource ? '编辑源' : '添加源'}</Text>
                             <TouchableOpacity onPress={() => setShowSourceModal(false)} hitSlop={8}>
@@ -437,7 +438,7 @@ export default function Settings() {
                             </TouchableOpacity>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
 
             {/* ═══════ 弹窗：播放器设置（类型 + 倍速）═══════ */}
