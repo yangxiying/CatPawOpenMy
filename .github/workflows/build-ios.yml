@@ -39,6 +39,8 @@ jobs:
           BUILD_MODE: ${{ github.event.inputs.mode || 'full' }}
         run: |
           chmod +x setup.sh build-ipa.sh
+          # Force clean node_modules to avoid corrupted cache
+          rm -rf app/node_modules app/package-lock.json
           EXTRA_FLAGS=""
           if [ "$BUILD_MODE" = "minimal" ]; then EXTRA_FLAGS="--minimal"; fi
           ./setup.sh --skip-pod $EXTRA_FLAGS
