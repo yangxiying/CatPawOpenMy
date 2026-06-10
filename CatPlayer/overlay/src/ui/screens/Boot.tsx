@@ -39,7 +39,12 @@ export default function Boot() {
         }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
-            if (NodeService.isWebsiteSource) return;
+            // 网站源：WebView 全屏渲染，Boot 不需要 /config，直接标记 ready
+            if (NodeService.isWebsiteSource) {
+                setLogs(l => [...l, '网站源检测到，跳过 /config']);
+                NodeService.markReady();
+                return;
+            }
             go();
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
         return () => { offLog(); offErr(); clearTimeout(timeout); };

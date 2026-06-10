@@ -67,6 +67,24 @@ export default function App() {
         return unsub;
     }, [nav]);
 
+    /** 网站源：全屏显示 WebView + 底部设置按钮 */
+    if (isWebSrc) {
+        return (
+            <NavContext.Provider value={nav}>
+                <View style={{ flex: 1 }}>
+                    <NodeWebView visible={true} />
+                    <TouchableOpacity
+                        style={styles.webSettingsBtn}
+                        onPress={() => nav.push('Settings')}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={styles.webSettingsBtnT}>⚙</Text>
+                    </TouchableOpacity>
+                </View>
+            </NavContext.Provider>
+        );
+    }
+
     /** Tab 切换处理：替换栈底为对应 Tab 页面 */
     const handleTabChange = useCallback((tab: string) => {
         setActiveTab(tab);
@@ -80,15 +98,6 @@ export default function App() {
     const canBack = stack.length > 1;
     const isPlayer = cur.name === 'Player';
     const showTabBar = !isPlayer && cur.name !== 'Boot' && isTabRoot(cur.name);
-
-    // 网站源：全屏显示 WebView（网站 UI 在 WebView 内渲染）
-    if (isWebSrc && cur.name === 'Boot') {
-        return (
-            <NavContext.Provider value={nav}>
-                <NodeWebView visible={true} />
-            </NavContext.Provider>
-        );
-    }
 
     return (
         <NavContext.Provider value={nav}>
@@ -137,4 +146,6 @@ const styles = StyleSheet.create({
     back: { color: '#7aa2ff', fontSize: 16 },
     title: { color: '#fff', fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
     body: { flex: 1 },
+    webSettingsBtn: { position: 'absolute', bottom: 40, right: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 },
+    webSettingsBtnT: { color: '#fff', fontSize: 20 },
 });

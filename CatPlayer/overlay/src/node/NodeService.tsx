@@ -4,6 +4,7 @@
  */
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { WebView } from 'react-native-webview';
 import WebViewNode, { WebViewNodeRef } from './WebViewNode';
 import { BridgeRequest, BridgeResponse, rejectAll } from './bridge';
 import { SOURCE } from '../config';
@@ -155,6 +156,7 @@ class NodeServiceImpl {
     private refreshCount = 0;
     private playCbs: Cb<{ url: string; title?: string }>[] = [];
     private sourceTypeCbs: Cb<boolean>[] = [];
+    remoteSourceUrl: string = '';
 
     constructor() {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
@@ -261,7 +263,81 @@ class NodeServiceImpl {
         this.started = true;
         this.log(`init start (polyfillCode len=${polyfillCode.length})`);
 
-        // 优先使用内嵌爬虫服务 bundle（服务源），跳过远程网站源下载
+        // 检查是否有自定义远程源 URL（Settings 配置）
+        let remoteUrl = '';
+        try {
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            remoteUrl = (await AsyncStorage.getItem('setting_sourceUrl')) || '';
+        } catch {}
+
+        if (remoteUrl && remoteUrl !== SOURCE.base) {
+            // 自定义远程源：下载 bundle，检测类型
+            this.log(`custom remote source: ${remoteUrl}`);
+            try {
+                const dir = Platform.OS === 'ios'
+                    ? `${RNFS.DocumentDirectoryPath}/catplayer`
+                    : `${RNFS.DocumentDirectoryPath}/catplayer`;
+                await RNFS.mkdir(dir).catch(() => {});
+
+                // 下载 index.js
+                const idxPath = `${dir}/remote_index.js`;
+                const md5Path = `${dir}/remote_index.md5`;
+                const baseNoMd5 = remoteUrl.replace(/\/index\.js\.md5$/, '').replace(/\/index\.md5$/, '');
+                const md5Url = baseNoMd5 + '/index.js.md5';
+                const jsUrl = baseNoMd5 + '/index.js';
+
+                // 获取 auth header
+                let authHeader = '';
+                try {
+                    const u = new URL(remoteUrl);
+                    if (u.username || u.password) {
+                        authHeader = 'Basic ' + btoa(decodeURIComponent(u.username) + ':' + decodeURIComponent(u.password));
+                    }
+                } catch {}
+
+                // MD5 校验
+                this.log('fetching remote md5…');
+                await RNFS.downloadFile({ fromUrl: md5Url, toFile: md5Path, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+                const wantMd5 = (await RNFS.readFile(md5Path, 'utf8')).trim();
+                let cachedMd5 = '';
+                try { cachedMd5 = (await RNFS.readFile(`${dir}/.remote_md5`, 'utf8')).trim(); } catch {}
+
+                const idxExists = await RNFS.exists(idxPath).catch(() => false);
+                let localOk = false;
+                if (idxExists) {
+                    try {
+                        const content = await RNFS.readFile(idxPath, 'utf8');
+                        localOk = md5(content).trim() === wantMd5;
+                    } catch {}
+                }
+
+                if (cachedMd5 !== wantMd5 || !localOk) {
+                    this.log('downloading remote bundle…');
+                    await RNFS.downloadFile({ fromUrl: jsUrl, toFile: idxPath, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+                    await RNFS.writeFile(`${dir}/.remote_md5`, wantMd5, 'utf8');
+                } else {
+                    this.log('cache hit');
+                }
+
+                this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
+                const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
+                this.setIsWebsiteSource(isWeb);
+                this.log(`remote bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), website=${isWeb}`);
+
+                // 网站源：保存远程 URL 供 WebView 加载
+                if (isWeb) {
+                    this.remoteSourceUrl = baseNoMd5;
+                    this.log(`website source URL: ${this.remoteSourceUrl}`);
+                }
+
+                this.renderTrigger?.();
+                return;
+            } catch (e: any) {
+                this.log(`remote source failed: ${e?.message || e}, falling back to embedded`);
+            }
+        }
+
+        // 优先使用内嵌爬虫服务 bundle（服务源）
         if (embeddedSpiderCode) {
             this.bundleCode = embeddedSpiderCode;
             this.configCode = embeddedSpiderConfig;
@@ -389,6 +465,7 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
     const [err, setErr] = useState<string | null>(null);
     const [, forceRender] = useState(0);
     const wvRef = useRef<WebViewNodeRef>(null);
+    const webWvRef = useRef<WebView>(null);
 
     const setWvRef = useCallback((ref: WebViewNodeRef | null) => {
         wvRef.current = ref;
@@ -421,6 +498,44 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
         nodeService.triggerPlay(url, title);
     }, []);
 
+    // 网站源：直接加载远程 URL（全屏可见 WebView）
+    if (nodeService.isWebsiteSource && nodeService.remoteSourceUrl) {
+        return (
+            <View style={forcedVisible ? styles.visible : styles.hidden}>
+                <WebView
+                    ref={webWvRef}
+                    source={{ uri: nodeService.remoteSourceUrl }}
+                    style={styles.webview}
+                    originWhitelist={['*']}
+                    javaScriptEnabled
+                    allowFileAccess
+                    allowUniversalAccessFromFileURLs
+                    mixedContentMode="always"
+                    cacheEnabled={true}
+                    allowFileAccessFromFileURLs
+                    scrollEnabled
+                    bounces
+                    onLoadEnd={() => {
+                        // 注入播放桥接：拦截播放请求发送给 RN
+                        webWvRef.current?.injectJavaScript(`
+(function(){
+  window.addEventListener('message', function(e) {
+    try {
+      var d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (d && d.type === 'play') {
+        window.ReactNativeWebView.postMessage(JSON.stringify(d));
+      }
+    } catch {}
+  });
+})();
+true;
+                        `);
+                    }}
+                />
+            </View>
+        );
+    }
+
     const code = nodeService.getBundleCode();
     if (!code) { return null; }
 
@@ -439,3 +554,9 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
         />
     );
 }
+
+const styles = StyleSheet.create({
+    hidden: { position: 'absolute', width: 1, height: 1, opacity: 0, top: -9999 },
+    visible: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+    webview: { flex: 1, width: '100%', height: '100%' },
+});
