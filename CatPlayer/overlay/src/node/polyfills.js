@@ -535,20 +535,42 @@ const MODULES = {
     'buffer': { Buffer: globalThis.Buffer, Blob: class Blob { constructor(parts, opts) { this._parts = parts || []; this.type = opts?.type || ''; } async arrayBuffer() { return new ArrayBuffer(0); } get size() { return 0; } slice() { return new Blob(); } stream() { return new EventEmitterPolyfill(); } text() { return Promise.resolve(''); } }, File: class File extends (globalThis.Blob || Blob) { constructor(parts, name, opts) { super(parts, opts); this.name = name; this.lastModified = opts?.lastModified || Date.now(); } }, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
 };
 
+// CDN global fallback: website source bundle 内部 require('react') 等走 polyfill
+// CDN 脚本已注入 window.React / window.ReactDOM / window.antd 等
+var WINDOW_FALLBACK = {
+    react: function() { return window.React || {}; },
+    'react-dom': function() { return window.ReactDOM || {}; },
+    'react-dom/client': function() { return { createRoot: window.ReactDOM?.createRoot?.bind(window.ReactDOM) }; },
+    antd: function() { return window.antd || {}; },
+    axios: function() { return window.axios || {}; },
+    dayjs: function() { return window.dayjs || {}; },
+    classnames: function() { return window.classNames || function() { var args = arguments; return Array.prototype.slice.call(args).filter(Boolean).join(' '); }; },
+    '@ant-design/icons': function() { return window.icons || {}; },
+    'prop-types': function() { return { any: {}, array: {}, bool: {}, func: {}, number: {}, object: {}, string: {}, node: {}, element: {}, oneOfType: function() { return {}; }, shape: function() { return {}; } }; },
+};
+var _modCache = {};
+
 function customRequire(moduleName) {
     var mod = MODULES[moduleName];
     if (!mod) {
         var stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
         if (stripped) mod = MODULES[stripped];
     }
+    if (!mod) {
+        // Fallback: 從 window 全局獲取 CDN 載入的庫
+        var fallback = WINDOW_FALLBACK[moduleName];
+        if (fallback) {
+            mod = fallback();
+        } else {
+            // 檢查 window 是否有同名全局
+            var globalKey = moduleName.replace(/^@/, '').replace(/\//g, '_');
+            mod = window[globalKey] || window[moduleName];
+        }
+    }
     if (!mod) mod = {};
     // Babel __esModule interop: ensure every module has __esModule and default
     if (!mod.__esModule) mod.__esModule = true;
     if (!mod.default) mod.default = mod;
-    // Diagnostic: log first few unusual requires
-    if (moduleName === 'node:https' || moduleName === 'https') {
-        _log('require(' + moduleName + ') => keys=' + Object.keys(mod).join(',') + ' default=' + (typeof mod.default));
-    }
     return mod;
 }
 

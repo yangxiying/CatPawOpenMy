@@ -25,13 +25,14 @@ interface Props {
 }
 
 // 网站源依赖的 CDN 库（与 websiteBundle 内引用的版本一致）
+// baomitu CDN 已失效（404），改用 unpkg
 const CDN_SCRIPTS = `
-<script src="https://lib.baomitu.com/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://lib.baomitu.com/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://lib.baomitu.com/axios/0.26.0/axios.min.js"></script>
-<script src="https://lib.baomitu.com/dayjs/1.10.8/dayjs.min.js"></script>
-<link rel="stylesheet" href="https://lib.baomitu.com/antd/5.23.3/reset.min.css" />
-<script src="https://lib.baomitu.com/antd/5.23.3/antd.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/antd@5.23.3/dist/reset.css" />
+<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/dayjs@1.10.8/dayjs.min.js"></script>
+<script src="https://unpkg.com/axios@0.26.0/dist/axios.min.js"></script>
+<script src="https://unpkg.com/antd@5.23.3/dist/antd.min.js"></script>
 `;
 
 const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode, polyfillCode, onReady, onError, onLog, visible, onPlay }, ref) => {
@@ -52,7 +53,7 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
     // 构建 HTML
     const html = useMemo(() => {
         if (isWebsite) {
-            return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>${CDN_SCRIPTS}</head><body><div id="root"></div><div id="www"></div><script>
+            return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/><style>html,body,#app{margin:0;padding:0;width:100%;height:100%}#root,#www{display:none}</style>${CDN_SCRIPTS}</head><body><div id="root"></div><div id="app"></div><div id="www"></div><script>
 (function(){
 var _log=function(m){try{window.ReactNativeWebView.postMessage(JSON.stringify({type:'log',msg:m}))}catch(e){}};
 function check(){
@@ -116,35 +117,17 @@ try {
     }
     var innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
     _log('innerCode len=' + innerCode.length);
-    var lastIdx = innerCode.lastIndexOf('})()');
-    if (lastIdx < 0) { throw new Error('cannot find })() patch point'); }
-    var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
-    var _origCR = ReactDOM.createRoot;
-    ReactDOM.createRoot = function(c) {
-        if (!c) {
-            var alt = document.getElementById('www') || document.getElementById('root');
-            if (!alt) { alt = document.createElement('div'); document.body.appendChild(alt); }
-            c = alt;
-        }
-        return _origCR.call(this, c);
-    };
-    var __fn2 = new Function('require','module','exports','__filename','__dirname', patched);
+    // inner bundle 内部 renderClient 自渲染到 document.getElementById("app")
+    var __fn2 = new Function('require','module','exports','__filename','__dirname', innerCode + ';globalThis.__WS=module.exports;');
     var __m2 = { exports: {} };
     __fn2(__req, __m2, __m2.exports, '/main.js', '/');
     _log('inner bundle executed');
-    ReactDOM.createRoot = _origCR;
-    var ws = globalThis.__WS; delete globalThis.__WS;
+    var ws = globalThis.__WS || __m2.exports; delete globalThis.__WS;
     if (ws && typeof ws.renderClient === 'function') {
-        var app = ws.renderClient();
-        if (app != null) {
-            var www = document.getElementById('www') || document.getElementById('root');
-            if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
-            if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
-            else { ReactDOM.createRoot(www).render(app); }
-        }
+        ws.renderClient();
         _log('renderClient OK');
     } else {
-        _log('no renderClient');
+        _log('no renderClient, keys=' + (ws ? Object.keys(ws).join(',') : 'null'));
     }
 } catch(e) {
     _log('WEBSITE ERROR: ' + (e && e.stack ? e.stack : String(e)));
