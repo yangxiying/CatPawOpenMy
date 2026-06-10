@@ -6,3 +6,10 @@ node_modules/
 *.log
 .DS_Store
 ios/build/
+
+.atomcode/
+.codegraph/
+.cursor/
+.omc/
+.cursor/
+

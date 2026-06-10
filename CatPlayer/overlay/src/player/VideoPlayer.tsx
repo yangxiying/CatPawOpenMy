@@ -1,12 +1,14 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { Quality } from '../api/CatApi';
+import { StorageService } from '../storage/StorageService';
 
-// react-native-video 可选——未安装时降级为跳转播放
 let Video: any = null;
 try { Video = require('react-native-video').default; } catch (e) { /* not installed */ }
 
-export default function VideoPlayer({ uri, headers, title, qualities, qi, onQuality, onBack }: {
+const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+
+export default function VideoPlayer({ uri, headers, title, qualities, qi, onQuality, onBack, vodId, siteKey }: {
     uri: string;
     headers?: any;
     title?: string;
@@ -14,10 +16,93 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     qi?: number;
     onQuality?: (i: number) => void;
     onBack?: () => void;
+    vodId?: string;
+    siteKey?: string;
 }) {
     const ref = useRef<any>(null);
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [speed, setSpeed] = useState(1.0);
+    const [showSpeed, setShowSpeed] = useState(false);
+    const [showControls, setShowControls] = useState(true);
+    const [position, setPosition] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [resumePos, setResumePos] = useState<number | null>(null);
+    const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    /** 加载上次播放进度，用于续播 */
+    useEffect(() => {
+        if (!vodId || !siteKey) return;
+        (async () => {
+            const history = await StorageService.listHistory();
+            const item = history.find(h => h.id === vodId && h.siteKey === siteKey);
+            if (item && item.lastPosition > 5 && item.lastDuration > 0) {
+                setResumePos(item.lastPosition);
+            }
+        })();
+    }, [vodId, siteKey]);
+
+    /** 加载默认倍速设置 */
+    useEffect(() => {
+        (async () => {
+            const s = await StorageService.getSetting('defaultSpeed');
+            if (typeof s === 'number' && s >= 0.5 && s <= 3.0) setSpeed(s);
+        })();
+    }, []);
+
+    /** 续播：视频加载后跳转到上次位置 */
+    const handleLoad = useCallback((e: any) => {
+        setLoading(false);
+        const dur = e?.duration || e?.naturalSize?.duration || 0;
+        if (dur > 0) setDuration(dur);
+        if (resumePos && resumePos > 5 && ref.current) {
+            ref.current.seek(resumePos);
+            setResumePos(null);
+        }
+    }, [resumePos]);
+
+    /** 定时保存播放进度到历史 */
+    const handleProgress = useCallback((e: any) => {
+        const pos = e?.currentTime || e?.currentPosition || 0;
+        const dur = e?.seekableDuration || duration;
+        setPosition(pos);
+        if (dur > 0) setDuration(dur);
+    }, [duration]);
+
+    /** 退出时保存播放进度 */
+    const handleBack = useCallback(() => {
+        if (vodId && siteKey && position > 0 && duration > 0) {
+            StorageService.addHistory({
+                id: vodId,
+                name: title || '',
+                pic: '',
+                remarks: '',
+                siteKey,
+                siteName: '',
+                siteApi: '',
+                lastEpisode: '',
+                lastPosition: position,
+                lastDuration: duration,
+                updatedAt: Date.now(),
+            });
+        }
+        onBack?.();
+    }, [vodId, siteKey, position, duration, title, onBack]);
+
+    /** 自动隐藏控制栏 */
+    const resetHideTimer = useCallback(() => {
+        setShowControls(true);
+        if (hideTimer.current) clearTimeout(hideTimer.current);
+        hideTimer.current = setTimeout(() => setShowControls(false), 5000);
+    }, []);
+
+    /** 切换倍速 */
+    const cycleSpeed = useCallback(() => {
+        const idx = SPEED_OPTIONS.indexOf(speed);
+        const next = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
+        setSpeed(next);
+        if (ref.current?.rate !== undefined) ref.current.rate = next;
+    }, [speed]);
 
     if (!Video) {
         return (
@@ -35,7 +120,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     }
 
     return (
-        <View style={styles.root}>
+        <TouchableOpacity activeOpacity={1} style={styles.root} onPress={resetHideTimer}>
             <Video
                 ref={ref}
                 source={{ uri, headers: headers || {} }}
@@ -47,29 +132,50 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
                 playInBackground
                 playWhenInactive
                 ignoreSilentSwitch="ignore"
+                rate={speed}
                 onLoadStart={() => { setLoading(true); setErr(null); }}
-                onLoad={() => setLoading(false)}
+                onLoad={handleLoad}
+                onProgress={handleProgress}
                 onError={(e: any) => {
                     setLoading(false);
                     setErr(e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e?.error || e));
                 }}
             />
 
-            <View style={styles.topbar}>
-                <TouchableOpacity onPress={onBack} hitSlop={hit}><Text style={styles.tb}>‹ 返回</Text></TouchableOpacity>
-                <Text style={styles.title} numberOfLines={1}>{title}</Text>
-                <TouchableOpacity onPress={() => ref.current?.presentFullscreenPlayer()} hitSlop={hit}>
-                    <Text style={styles.tb}>全屏</Text>
-                </TouchableOpacity>
-            </View>
+            {showControls && (
+                <View style={styles.topbar}>
+                    <TouchableOpacity onPress={handleBack} hitSlop={hit}><Text style={styles.tb}>‹ 返回</Text></TouchableOpacity>
+                    <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                    <TouchableOpacity onPress={() => ref.current?.presentFullscreenPlayer()} hitSlop={hit}>
+                        <Text style={styles.tb}>全屏</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
 
             {loading && !err && <ActivityIndicator style={styles.loading} size="large" color="#fff" />}
 
-            {qualities && qualities.length > 1 && (
-                <View style={styles.qbar}>
-                    {qualities.map((q, i) => (
-                        <TouchableOpacity key={i} onPress={() => onQuality && onQuality(i)} style={[styles.qchip, i === qi && styles.qOn]}>
-                            <Text style={styles.qt}>{q.label}</Text>
+            {showControls && (
+                <View style={styles.bottomBar}>
+                    {qualities && qualities.length > 1 && (
+                        <View style={styles.qbar}>
+                            {qualities.map((q, i) => (
+                                <TouchableOpacity key={i} onPress={() => onQuality && onQuality(i)} style={[styles.qchip, i === qi && styles.qOn]}>
+                                    <Text style={styles.qt}>{q.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                    <TouchableOpacity style={styles.speedBtn} onPress={cycleSpeed} onLongPress={() => setShowSpeed(!showSpeed)}>
+                        <Text style={styles.speedText}>{speed}x</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {showSpeed && (
+                <View style={styles.speedPanel}>
+                    {SPEED_OPTIONS.map(s => (
+                        <TouchableOpacity key={s} onPress={() => { setSpeed(s); setShowSpeed(false); }} style={[styles.speedOpt, s === speed && styles.speedOn]}>
+                            <Text style={[styles.speedOptT, s === speed && styles.speedOptOnT]}>{s}x</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
@@ -81,7 +187,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
                     <Text style={styles.err2}>{err}</Text>
                 </View>
             )}
-        </View>
+        </TouchableOpacity>
     );
 }
 
@@ -94,10 +200,18 @@ const styles = StyleSheet.create({
     tb: { color: '#fff', fontSize: 16 },
     title: { color: '#fff', fontSize: 14, flex: 1, textAlign: 'center', marginHorizontal: 8 },
     loading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-    qbar: { position: 'absolute', bottom: 70, right: 14, flexDirection: 'row', gap: 8 },
+    bottomBar: { position: 'absolute', bottom: 70, left: 14, right: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+    qbar: { flexDirection: 'row', gap: 8, flex: 1 },
     qchip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: '#0009' },
     qOn: { backgroundColor: '#2a6cff' },
     qt: { color: '#fff', fontSize: 12 },
+    speedBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: '#0009' },
+    speedText: { color: '#7aa2ff', fontSize: 13, fontWeight: '600' },
+    speedPanel: { position: 'absolute', bottom: 120, right: 14, backgroundColor: '#1a1a2eee', borderRadius: 12, padding: 8, minWidth: 80 },
+    speedOpt: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+    speedOn: { backgroundColor: '#2a6cff44' },
+    speedOptT: { color: '#aaa', fontSize: 14, textAlign: 'center' },
+    speedOptOnT: { color: '#7aa2ff', fontWeight: '600' },
     errBox: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', padding: 24 },
     err: { color: '#ff6b6b', fontSize: 16, marginBottom: 8 },
     err2: { color: '#aaa', fontSize: 12, textAlign: 'center' },

@@ -3,7 +3,7 @@ import VideoPlayer from '../../player/VideoPlayer';
 import { useNav } from '../App';
 import { Quality } from '../../api/CatApi';
 
-export default function Player({ qualities, headers, title }: { qualities: Quality[]; headers: any; title: string }) {
+export default function Player({ qualities, headers, title, vodId, siteKey }: { qualities: Quality[]; headers: any; title: string; vodId?: string; siteKey?: string }) {
     const nav = useNav();
     const [qi, setQi] = useState(0);
     const q = qualities[qi] || qualities[0];
@@ -16,6 +16,8 @@ export default function Player({ qualities, headers, title }: { qualities: Quali
             qi={qi}
             onQuality={setQi}
             onBack={nav.pop}
+            vodId={vodId}
+            siteKey={siteKey}
         />
     );
 }

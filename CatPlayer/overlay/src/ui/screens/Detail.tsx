@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Image, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { useNav } from '../App';
 import { CatApi, splitPlay, parsePlayUrl, Site, PlayLine, Episode } from '../../api/CatApi';
+import { StorageService } from '../../storage/StorageService';
 
 export default function Detail({ site, vodId }: { site: Site; vodId: any }) {
     const nav = useNav();
@@ -10,6 +11,7 @@ export default function Detail({ site, vodId }: { site: Site; vodId: any }) {
     const [li, setLi] = useState(0);
     const [msg, setMsg] = useState<string | null>('加载中…');
     const [resolving, setResolving] = useState(false);
+    const [isFav, setIsFav] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -22,6 +24,35 @@ export default function Detail({ site, vodId }: { site: Site; vodId: any }) {
         })();
     }, [site.api, vodId]);
 
+    /** 检查是否已收藏 */
+    useEffect(() => {
+        (async () => {
+            const fav = await StorageService.isFavorite(String(vodId), site.key);
+            setIsFav(fav);
+        })();
+    }, [vodId, site.key]);
+
+    /** 切换收藏状态 */
+    const toggleFav = async () => {
+        if (!vod) return;
+        if (isFav) {
+            await StorageService.removeFavorite(String(vodId), site.key);
+            setIsFav(false);
+        } else {
+            await StorageService.addFavorite({
+                id: String(vodId),
+                name: vod.vod_name || '',
+                pic: vod.vod_pic || '',
+                remarks: vod.vod_remarks || '',
+                siteKey: site.key,
+                siteName: site.name,
+                siteApi: site.api,
+                addedAt: Date.now(),
+            });
+            setIsFav(true);
+        }
+    };
+
     const playEp = async (line: PlayLine, ep: Episode) => {
         if (resolving) return;
         setResolving(true);
@@ -33,7 +64,21 @@ export default function Detail({ site, vodId }: { site: Site; vodId: any }) {
             }
             const qualities = parsePlayUrl(res?.url);
             if (!qualities.length) { Alert.alert('解析失败', '未取得播放地址'); return; }
-            nav.push('Player', { qualities, headers: res?.header || {}, title: (vod?.vod_name || '') + ' ' + ep.name });
+            const epTitle = (vod?.vod_name || '') + ' ' + ep.name;
+            nav.push('Player', { qualities, headers: res?.header || {}, title: epTitle, vodId: String(vodId), siteKey: site.key });
+            StorageService.addHistory({
+                id: String(vodId),
+                name: vod?.vod_name || '',
+                pic: vod?.vod_pic || '',
+                remarks: vod?.vod_remarks || '',
+                siteKey: site.key,
+                siteName: site.name,
+                siteApi: site.api,
+                lastEpisode: ep.name,
+                lastPosition: 0,
+                lastDuration: 0,
+                updatedAt: Date.now(),
+            });
         } catch (e: any) {
             Alert.alert('错误', String(e?.message || e));
         } finally { setResolving(false); }
@@ -55,6 +100,11 @@ export default function Detail({ site, vodId }: { site: Site; vodId: any }) {
                     {!!vod.type_name && <Text style={styles.sub}>{vod.type_name}</Text>}
                     {!!vod.vod_actor && <Text style={styles.sub} numberOfLines={2}>主演: {vod.vod_actor}</Text>}
                 </View>
+            </View>
+            <View style={styles.actions}>
+                <TouchableOpacity style={[styles.favBtn, isFav && styles.favOn]} onPress={toggleFav}>
+                    <Text style={[styles.favT, isFav && styles.favOnT]}>{isFav ? '★ 已收藏' : '☆ 收藏'}</Text>
+                </TouchableOpacity>
             </View>
             {!!vod.vod_content && <Text style={styles.content}>{String(vod.vod_content).replace(/<[^>]+>/g, '').trim()}</Text>}
 
@@ -95,6 +145,11 @@ const styles = StyleSheet.create({
     meta: { flex: 1, marginLeft: 14 },
     name: { color: '#fff', fontSize: 18, fontWeight: '600' },
     sub: { color: '#9aa0ad', fontSize: 13, marginTop: 5 },
+    actions: { flexDirection: 'row', paddingHorizontal: 14, marginBottom: 8 },
+    favBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: '#1a1a22' },
+    favOn: { backgroundColor: '#3a2f15' },
+    favT: { color: '#9aa0ad', fontSize: 14 },
+    favOnT: { color: '#ffc107' },
     content: { color: '#b9bdc8', fontSize: 13, lineHeight: 20, paddingHorizontal: 14, paddingBottom: 6 },
     lines: { paddingLeft: 10, marginTop: 6, maxHeight: 44 },
     lineTab: { paddingHorizontal: 12, paddingVertical: 7, marginRight: 6, borderRadius: 14, backgroundColor: '#16161d' },

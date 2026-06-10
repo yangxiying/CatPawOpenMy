@@ -1,10 +1,14 @@
-import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, useCallback } from 'react';
 import { SafeAreaView, StatusBar, View, Text, TouchableOpacity, StyleSheet, BackHandler, Platform } from 'react-native';
 import Boot from './screens/Boot';
 import Sites from './screens/Sites';
 import Category from './screens/Category';
 import Detail from './screens/Detail';
 import Player from './screens/Player';
+import Favorites from './screens/Favorites';
+import History from './screens/History';
+import Settings from './screens/Settings';
+import TabBar from './components/TabBar';
 import { NodeWebView } from '../node/NodeService';
 import NodeService from '../node/NodeService';
 
@@ -16,13 +20,23 @@ export type Nav = {
 const NavContext = createContext<Nav>(null as any);
 export const useNav = () => useContext(NavContext);
 
-const SCREENS: Record<string, React.ComponentType<any>> = { Boot, Sites, Category, Detail, Player };
+const SCREENS: Record<string, React.ComponentType<any>> = { Boot, Sites, Category, Detail, Player, Favorites, History, Settings };
 
 type Route = { name: string; params?: any };
+
+/** Tab 页面名称集合，这些页面显示底部 Tab 栏 */
+const TAB_SCREENS = ['Home', 'Favorites', 'History', 'Settings'];
+
+/** 判断当前路由是否为 Tab 根页面 */
+function isTabRoot(name: string): boolean {
+    return TAB_SCREENS.includes(name);
+}
 
 export default function App() {
     const [stack, setStack] = useState<Route[]>([{ name: 'Boot' }]);
     const [isWebSrc, setIsWebSrc] = useState(NodeService.isWebsiteSource);
+    const [activeTab, setActiveTab] = useState('home');
+
     const nav = useMemo<Nav>(() => ({
         push: (name, params) => setStack(s => [...s, { name, params }]),
         pop: () => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)),
@@ -46,7 +60,6 @@ export default function App() {
         return () => sub.remove();
     }, []);
 
-    // 监听网站源的播放请求
     useEffect(() => {
         const unsub = NodeService.onPlay(({ url, title }) => {
             nav.push('Player', { qualities: [{ label: '源', url }], headers: {}, title: title || '' });
@@ -54,11 +67,20 @@ export default function App() {
         return unsub;
     }, [nav]);
 
+    /** Tab 切换处理：替换栈底为对应 Tab 页面 */
+    const handleTabChange = useCallback((tab: string) => {
+        setActiveTab(tab);
+        const screenMap: Record<string, string> = { home: 'Sites', favorites: 'Favorites', history: 'History', settings: 'Settings' };
+        const screenName = screenMap[tab] || 'Sites';
+        setStack([{ name: screenName }]);
+    }, []);
+
     const cur = stack[stack.length - 1];
     const Screen = SCREENS[cur.name] || Boot;
     const canBack = stack.length > 1;
     const isPlayer = cur.name === 'Player';
     const showWebView = isWebSrc && !isPlayer;
+    const showTabBar = !isPlayer && cur.name !== 'Boot' && isTabRoot(cur.name);
 
     return (
         <NavContext.Provider value={nav}>
@@ -76,6 +98,7 @@ export default function App() {
                 <View style={styles.body}>
                     <Screen {...(cur.params || {})} />
                 </View>
+                {showTabBar && <TabBar activeTab={activeTab} onTabChange={handleTabChange} />}
             </SafeAreaView>
             <NodeWebView visible={showWebView} />
         </NavContext.Provider>
@@ -85,9 +108,13 @@ export default function App() {
 function titleOf(r: Route) {
     switch (r.name) {
         case 'Boot': return 'CatPlayer';
-        case 'Sites': return '站点';
+        case 'Sites': return '首页';
         case 'Category': return r.params?.site?.name || '分类';
         case 'Detail': return '详情';
+        case 'Player': return '播放';
+        case 'Favorites': return '收藏';
+        case 'History': return '历史';
+        case 'Settings': return '设置';
         default: return 'CatPlayer';
     }
 }
