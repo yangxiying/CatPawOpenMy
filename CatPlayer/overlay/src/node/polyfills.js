@@ -34,6 +34,18 @@ globalThis.process = globalThis.process || {
     exit: () => {},
     stdout: { write: (s) => { console.log(s); } },
     stderr: { write: (s) => { console.error(s); } },
+    hrtime: (() => {
+        const _origin = (typeof performance !== 'undefined' ? performance : Date).now();
+        const fn = (prev) => {
+            const now = (typeof performance !== 'undefined' ? performance : Date).now() - _origin;
+            const sec = Math.floor(now / 1000);
+            const ns = Math.floor((now % 1000) * 1e6);
+            if (prev) return [sec - prev[0], ns - prev[1]];
+            return [sec, ns];
+        };
+        fn.bigint = () => BigInt(Math.floor(((typeof performance !== 'undefined' ? performance : Date).now() - _origin) * 1e6));
+        return fn;
+    })(),
 };
 globalThis.setImmediate = globalThis.setImmediate || ((fn, ...a) => setTimeout(() => fn(...a), 0));
 globalThis.clearImmediate = globalThis.clearImmediate || clearTimeout;
