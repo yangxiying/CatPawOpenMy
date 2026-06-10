@@ -4,8 +4,8 @@ import {
     StyleSheet, ScrollView, Switch, Modal, Platform,
 } from 'react-native';
 import { StorageService } from '../../storage/StorageService';
+import type { SourceItem } from '../../storage/StorageService';
 import NodeService from '../../node/NodeService';
-import { SOURCE } from '../../config';
 
 type PlayerType = 'builtin' | 'mpv' | 'mdk';
 
@@ -42,8 +42,7 @@ const COLOR_THEME_OPTIONS: ColorThemeOption[] = [
 ];
 
 export default function Settings() {
-    const [sourceUrl, setSourceUrl] = useState('');
-    const [sourceAuth, setSourceAuth] = useState('');
+    const [sources, setSources] = useState<SourceItem[]>([]);
     const [playerType, setPlayerType] = useState<PlayerType>('builtin');
     const [defaultSpeed, setDefaultSpeed] = useState(1.0);
     const [darkMode, setDarkMode] = useState<DarkModeType>('system');
@@ -53,16 +52,18 @@ export default function Settings() {
     const [saving, setSaving] = useState(false);
 
     /** 弹窗状态 */
-    const [fullUrl, setFullUrl] = useState('');
-    const [showConfigModal, setShowConfigModal] = useState(false);
     const [showPlayerModal, setShowPlayerModal] = useState(false);
     const [showDarkModeModal, setShowDarkModeModal] = useState(false);
     const [showColorModal, setShowColorModal] = useState(false);
+    const [showSourceModal, setShowSourceModal] = useState(false);
+    const [editingSource, setEditingSource] = useState<SourceItem | null>(null);
+    const [sourceName, setSourceName] = useState('');
+    const [sourceUrl, setSourceUrl] = useState('');
 
     /** 从 StorageService 加载所有设置 */
     const loadSettings = useCallback(async () => {
-        const url = await StorageService.getSetting('sourceUrl');
-        const auth = await StorageService.getSetting('sourceAuth');
+        const srcs = await StorageService.listSources();
+        setSources(srcs);
         const pt = await StorageService.getSetting('playerType');
         const sp = await StorageService.getSetting('defaultSpeed');
         const dm = await StorageService.getSetting('darkMode');
@@ -70,23 +71,6 @@ export default function Settings() {
         const acc = await StorageService.getSetting('autoClearCache');
         const dbg = await StorageService.getSetting('debugMode');
 
-        setSourceUrl(url || SOURCE.base);
-        setSourceAuth(auth || SOURCE.auth);
-        // 拼接完整 URL 显示（含 auth）
-        const base = url || SOURCE.base;
-        const a = auth || SOURCE.auth;
-        let displayUrl = base;
-        if (a) {
-            try {
-                const decoded = atob(a);
-                const [user, pass] = decoded.split(':');
-                const u = new URL(base);
-                u.username = user || '';
-                u.password = pass || '';
-                displayUrl = u.toString();
-            } catch {}
-        }
-        setFullUrl(displayUrl);
         setPlayerType(pt || 'builtin');
         setDefaultSpeed(sp ?? 1.0);
         setDarkMode(dm || 'system');
@@ -108,47 +92,79 @@ export default function Settings() {
         }
     };
 
-    /** 获取当前播放器类型标签 */
-    const getPlayerLabel = () => PLAYER_OPTIONS.find(o => o.key === playerType)?.label || playerType;
+    /** 获取当前激活源名称 */
+    const getActiveSourceLabel = () => {
+        const active = sources.find(s => s.isActive);
+        return active ? truncateUrl(active.url) : '未配置';
+    };
 
-    /** 获取当前暗色模式标签 */
-    const getDarkModeLabel = () => DARK_MODE_OPTIONS.find(o => o.key === darkMode)?.label || darkMode;
+    /** 切换激活源 */
+    const handleSelectSource = useCallback(async (id: string) => {
+        await StorageService.setActiveSource(id);
+        await loadSettings();
+        await NodeService.forceRefresh();
+        Alert.alert('已切换', '源已切换，重新加载中…');
+    }, [loadSettings]);
 
-    /** 获取当前色彩主题对象 */
-    const getCurrentColorTheme = () => COLOR_THEME_OPTIONS.find(o => o.key === colorTheme) || COLOR_THEME_OPTIONS[0];
+    /** 删除源 */
+    const handleDeleteSource = useCallback(async (id: string) => {
+        if (sources.length <= 1) {
+            Alert.alert('提示', '至少保留一个源');
+            return;
+        }
+        Alert.alert('确认删除', '删除此源？', [
+            { text: '取消', style: 'cancel' },
+            { text: '删除', style: 'destructive', onPress: async () => {
+                await StorageService.removeSource(id);
+                await loadSettings();
+                await NodeService.forceRefresh();
+            }},
+        ]);
+    }, [sources.length, loadSettings]);
 
-    /** 保存播放源并强制刷新 */
-    const handleSaveAndReload = useCallback(async () => {
-        if (!fullUrl.trim()) {
-            Alert.alert('提示', '播放源地址不能为空');
+    /** 打开添加/编辑弹窗 */
+    const openSourceModal = (source?: SourceItem) => {
+        setEditingSource(source || null);
+        setSourceName(source?.name || '');
+        setSourceUrl(source?.url || '');
+        setShowSourceModal(true);
+    };
+
+    /** 保存源（添加或更新） */
+    const handleSaveSource = useCallback(async () => {
+        if (!sourceUrl.trim()) {
+            Alert.alert('提示', 'URL 不能为空');
             return;
         }
         setSaving(true);
         try {
-            // 从完整 URL 解析 base + auth
-            let base = fullUrl.trim();
-            let auth = '';
-            try {
-                const u = new URL(base);
-                if (u.username || u.password) {
-                    auth = btoa(decodeURIComponent(u.username) + ':' + decodeURIComponent(u.password));
-                    u.username = '';
-                    u.password = '';
-                    base = u.toString();
-                }
-            } catch {}
-            await StorageService.setSetting('sourceUrl', base);
-            await StorageService.setSetting('sourceAuth', auth);
-            setSourceUrl(base);
-            setSourceAuth(auth);
-            await NodeService.forceRefresh();
-            Alert.alert('成功', '播放源已保存并重新加载');
+            if (editingSource) {
+                await StorageService.updateSource(editingSource.id, {
+                    name: sourceName.trim() || '未命名',
+                    url: sourceUrl.trim(),
+                });
+            } else {
+                await StorageService.addSource({
+                    name: sourceName.trim() || '未命名',
+                    url: sourceUrl.trim(),
+                });
+            }
+            setShowSourceModal(false);
+            await loadSettings();
+            Alert.alert('成功', editingSource ? '源已更新' : '源已添加');
         } catch (e: any) {
             Alert.alert('错误', String(e?.message || e));
         } finally {
             setSaving(false);
         }
-    }, [fullUrl]);
+    }, [editingSource, sourceName, sourceUrl, loadSettings]);
+
+    /** 获取当前播放器类型标签 */
+    const getPlayerLabel = () => PLAYER_OPTIONS.find(o => o.key === playerType)?.label || playerType;
+    /** 获取当前暗色模式标签 */
+    const getDarkModeLabel = () => DARK_MODE_OPTIONS.find(o => o.key === darkMode)?.label || darkMode;
+    /** 获取当前色彩主题对象 */
+    const getCurrentColorTheme = () => COLOR_THEME_OPTIONS.find(o => o.key === colorTheme) || COLOR_THEME_OPTIONS[0];
 
     /** 切换播放器类型 */
     const handlePlayerTypeChange = useCallback(async (type: PlayerType) => {
@@ -275,14 +291,43 @@ export default function Settings() {
 
     return (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-            {/* ── 配置区域 ── */}
+            {/* ── 播放源列表 ── */}
             <View style={styles.section}>
-                {renderSettingRow(
-                    '⚙️', '配置', truncateUrl(fullUrl || sourceUrl),
-                    () => setShowConfigModal(true),
-                )}
-                {renderDivider()}
-                {renderSettingRow(
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>播放源</Text>
+                    <TouchableOpacity onPress={() => openSourceModal()} style={styles.addBtn}>
+                        <Text style={styles.addBtnT}>+ 添加</Text>
+                    </TouchableOpacity>
+                </View>
+                {sources.map(s => (
+                    <View key={s.id}>
+                        <TouchableOpacity
+                            style={[styles.sourceRow, s.isActive && styles.sourceRowActive]}
+                            onPress={() => handleSelectSource(s.id)}
+                            activeOpacity={0.6}
+                        >
+                            <View style={styles.sourceInfo}>
+                                <Text style={[styles.sourceName, s.isActive && styles.sourceNameActive]} numberOfLines={1}>{s.name}</Text>
+                                <Text style={styles.sourceUrl} numberOfLines={1}>{truncateUrl(s.url)}</Text>
+                            </View>
+                            <View style={styles.sourceActions}>
+                                {s.isActive && <Text style={styles.activeCheck}>✓</Text>}
+                                <TouchableOpacity onPress={() => openSourceModal(s)} hitSlop={8}>
+                                    <Text style={styles.sourceEdit}>编辑</Text>
+                                </TouchableOpacity>
+                                {sources.length > 1 && (
+                                    <TouchableOpacity onPress={() => handleDeleteSource(s.id)} hitSlop={8}>
+                                        <Text style={styles.sourceDel}>删除</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </TouchableOpacity>
+                        <View style={styles.divider} />
+                    </View>
+                ))}
+            </View>
+
+            {/* ── 其他设置 ── */}
                     '🎬', '播放器', getPlayerLabel(),
                     () => setShowPlayerModal(true),
                 )}
@@ -338,23 +383,34 @@ export default function Settings() {
                 </TouchableOpacity>
             </View>
 
-            {/* ═══════ 弹窗：配置详情（源地址 + Auth）═══════ */}
-            <Modal visible={showConfigModal} animationType="slide" transparent onRequestClose={() => setShowConfigModal(false)}>
+            {/* ═══════ 弹窗：添加/编辑播放源 ═══════ */}
+            <Modal visible={showSourceModal} animationType="slide" transparent onRequestClose={() => setShowSourceModal(false)}>
                 <View style={modalStyles.overlay}>
                     <View style={modalStyles.panel}>
                         <View style={modalStyles.header}>
-                            <Text style={modalStyles.headerTitle}>配置</Text>
-                            <TouchableOpacity onPress={() => setShowConfigModal(false)} hitSlop={8}>
+                            <Text style={modalStyles.headerTitle}>{editingSource ? '编辑源' : '添加源'}</Text>
+                            <TouchableOpacity onPress={() => setShowSourceModal(false)} hitSlop={8}>
                                 <Text style={modalStyles.closeBtn}>✕</Text>
                             </TouchableOpacity>
                         </View>
 
                         <ScrollView style={modalStyles.body} keyboardShouldPersistTiles="handled">
+                            <Text style={modalStyles.fieldLabel}>名称</Text>
+                            <TextInput
+                                style={modalStyles.input}
+                                value={sourceName}
+                                onChangeText={setSourceName}
+                                placeholder="我的源"
+                                placeholderTextColor="#999"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                            />
+
                             <Text style={modalStyles.fieldLabel}>源地址</Text>
                             <TextInput
                                 style={modalStyles.input}
-                                value={fullUrl}
-                                onChangeText={setFullUrl}
+                                value={sourceUrl}
+                                onChangeText={setSourceUrl}
                                 placeholder="http://user:pass@host/path/index.js.md5"
                                 placeholderTextColor="#999"
                                 autoCapitalize="none"
@@ -362,19 +418,19 @@ export default function Settings() {
                                 keyboardType="url"
                             />
                             <Text style={{ color: '#999', fontSize: 12, marginTop: 8 }}>
-                                支持 http://user:pass@host/path 格式，用户名密码自动解析
+                                支持 http://user:pass@host/path 格式
                             </Text>
                         </ScrollView>
 
                         <View style={modalStyles.footer}>
                             <TouchableOpacity
                                 style={[modalStyles.saveBtn, saving && modalStyles.saveBtnDisabled]}
-                                onPress={handleSaveAndReload}
+                                onPress={handleSaveSource}
                                 disabled={saving}
                                 activeOpacity={0.7}
                             >
                                 <Text style={modalStyles.saveBtnText}>
-                                    {saving ? '保存中…' : '保存并重新加载'}
+                                    {saving ? '保存中…' : '保存'}
                                 </Text>
                             </TouchableOpacity>
                         </View>
@@ -502,6 +558,37 @@ const styles = StyleSheet.create({
         ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 }, android: { elevation: 2 } }),
     },
 
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#eee',
+    },
+    sectionTitle: { fontSize: 14, fontWeight: '600', color: '#666' },
+    addBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#4CAF50' },
+    addBtnT: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+    sourceRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        minHeight: 52,
+    },
+    sourceRowActive: { backgroundColor: '#f0f8f0' },
+    sourceInfo: { flex: 1, marginRight: 8 },
+    sourceName: { fontSize: 15, fontWeight: '500', color: '#1a1a1a' },
+    sourceNameActive: { color: '#4CAF50' },
+    sourceUrl: { fontSize: 12, color: '#888', marginTop: 2 },
+    sourceActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    activeCheck: { color: '#4CAF50', fontSize: 16, fontWeight: '700' },
+    sourceEdit: { color: '#2196F3', fontSize: 13 },
+    sourceDel: { color: '#e04444', fontSize: 13 },
+
     settingRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -551,7 +638,7 @@ const styles = StyleSheet.create({
     divider: {
         height: StyleSheet.hairlineWidth,
         backgroundColor: '#eee',
-        marginLeft: 46,
+        marginLeft: 16,
     },
 
     colorIndicatorWrap: {

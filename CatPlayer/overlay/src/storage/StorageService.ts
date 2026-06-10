@@ -73,6 +73,21 @@ export type HistoryItem = {
 
 const MAX_HISTORY = 200;
 
+/** 播放源 */
+export type SourceItem = {
+    id: string;
+    name: string;
+    url: string;
+    isActive: boolean;
+};
+
+const DEFAULT_SOURCE: SourceItem = {
+    id: 'default',
+    name: '默认源',
+    url: 'http://wexfnw:wexfnw@cat.xn--4kq62z5rby2qupq9ub.top/index.js.md5',
+    isActive: true,
+};
+
 export const StorageService = {
     // ─── 收藏 ───
 
@@ -159,6 +174,90 @@ export const StorageService = {
         const store = await loadStore();
         if (!store.settings) store.settings = {};
         store.settings[key] = value;
+        await saveStore(store);
+    },
+
+    // ─── 播放源管理 ───
+
+    /** 获取所有播放源（首次调用自动创建默认源） */
+    async listSources(): Promise<SourceItem[]> {
+        const store = await loadStore();
+        if (!store.sources || !Array.isArray(store.sources) || store.sources.length === 0) {
+            store.sources = [DEFAULT_SOURCE];
+            await saveStore(store);
+        }
+        return store.sources;
+    },
+
+    /** 获取当前激活的播放源 */
+    async getActiveSource(): Promise<SourceItem> {
+        const sources = await this.listSources();
+        return sources.find(s => s.isActive) || sources[0] || DEFAULT_SOURCE;
+    },
+
+    /** 添加播放源 */
+    async addSource(item: Omit<SourceItem, 'id' | 'isActive'>): Promise<SourceItem> {
+        const store = await loadStore();
+        if (!store.sources) store.sources = [];
+        const newItem: SourceItem = {
+            ...item,
+            id: 'src_' + Date.now(),
+            isActive: store.sources.length === 0,
+        };
+        store.sources.push(newItem);
+        await saveStore(store);
+        return newItem;
+    },
+
+    /** 更新播放源 */
+    async updateSource(id: string, updates: Partial<Omit<SourceItem, 'id'>>): Promise<void> {
+        const store = await loadStore();
+        if (!store.sources) return;
+        const idx = store.sources.findIndex((s: SourceItem) => s.id === id);
+        if (idx >= 0) Object.assign(store.sources[idx], updates);
+        await saveStore(store);
+    },
+
+    /** 删除播放源（不能删除最后一个） */
+    async removeSource(id: string): Promise<void> {
+        const store = await loadStore();
+        if (!store.sources || store.sources.length <= 1) return;
+        const wasActive = store.sources.find((s: SourceItem) => s.id === id)?.isActive;
+        store.sources = store.sources.filter((s: SourceItem) => s.id !== id);
+        if (wasActive && store.sources.length > 0) store.sources[0].isActive = true;
+        await saveStore(store);
+    },
+
+    /** 设置激活的播放源（取消其他激活） */
+    async setActiveSource(id: string): Promise<void> {
+        const store = await loadStore();
+        if (!store.sources) return;
+        store.sources.forEach((s: SourceItem) => { s.isActive = s.id === id; });
+        await saveStore(store);
+    },
+
+    /** 从旧的 sourceUrl/sourceAuth 迁移到 sources 数组 */
+    async migrateSourceSettings(): Promise<void> {
+        const store = await loadStore();
+        if (store.sources && Array.isArray(store.sources) && store.sources.length > 0) return;
+        const oldUrl = store.settings?.sourceUrl;
+        if (oldUrl) {
+            const auth = store.settings?.sourceAuth || '';
+            let fullUrl = oldUrl;
+            if (auth) {
+                try {
+                    const decoded = atob(auth);
+                    const [user, pass] = decoded.split(':');
+                    const u = new URL(oldUrl);
+                    u.username = user || '';
+                    u.password = pass || '';
+                    fullUrl = u.toString();
+                } catch {}
+            }
+            store.sources = [{ id: 'migrated', name: '已迁移源', url: fullUrl, isActive: true }];
+        } else {
+            store.sources = [DEFAULT_SOURCE];
+        }
         await saveStore(store);
     },
 };

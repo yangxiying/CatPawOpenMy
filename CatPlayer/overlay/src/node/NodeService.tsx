@@ -263,11 +263,13 @@ class NodeServiceImpl {
         this.started = true;
         this.log(`init start (polyfillCode len=${polyfillCode.length})`);
 
-        // 检查是否有自定义远程源 URL（Settings 配置）
+        // 检查是否有自定义远程源 URL（从 sources 数组读取）
         let remoteUrl = '';
         try {
-            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-            remoteUrl = (await AsyncStorage.getItem('setting_sourceUrl')) || '';
+            const { StorageService } = require('../storage/StorageService');
+            await StorageService.migrateSourceSettings();
+            const active = await StorageService.getActiveSource();
+            remoteUrl = active?.url || '';
         } catch {}
 
         if (remoteUrl && remoteUrl !== SOURCE.base) {
