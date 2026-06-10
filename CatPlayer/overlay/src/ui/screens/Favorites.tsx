@@ -62,11 +62,11 @@ export default function Favorites() {
                 onLongPress={() => onLongPress(item)}
                 activeOpacity={0.7}
             >
-                <Image
-                    source={{ uri: item.pic }}
-                    style={[styles.pic, { width: W, height: W * 1.4 }]}
-                    defaultSource={undefined}
-                />
+                {item.pic ? (
+                    <Image source={{ uri: item.pic }} style={[styles.pic, { width: W, height: W * 1.4 }]} />
+                ) : (
+                    <View style={[styles.picFallback, { width: W, height: W * 1.4 }]} />
+                )}
                 <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
                 {!!item.remarks && <Text style={styles.remarks} numberOfLines={1}>{item.remarks}</Text>}
             </TouchableOpacity>
@@ -100,6 +100,7 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0b0b0f' },
     card: { marginBottom: GAP },
     pic: { borderRadius: 8, backgroundColor: '#16161d' },
+    picFallback: { borderRadius: 8, backgroundColor: '#16161d' },
     name: { color: '#cfd2dc', fontSize: 12, marginTop: 4 },
     remarks: { color: '#8a8f9c', fontSize: 10, marginTop: 1 },
     emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 80 },

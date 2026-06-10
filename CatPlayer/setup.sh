@@ -28,7 +28,7 @@ mkdir -p nodejs-assets 2>/dev/null || true  # 保留目录兼容性
 echo "▶ installing JS deps …"
 npm install
 if [ "$MINIMAL" = "false" ]; then
-    npm install --save react-native-webview react-native-fs react-native-video@5.2.2 @react-native-async-storage/async-storage
+    npm install --save react-native-webview react-native-fs react-native-video@5.2.2
 fi
 
 echo "▶ inlining polyfill source (avoids Hermes Function.prototype.toString() bug) …"

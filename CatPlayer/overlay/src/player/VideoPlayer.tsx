@@ -96,12 +96,14 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
         hideTimer.current = setTimeout(() => setShowControls(false), 5000);
     }, []);
 
+    const [speedKey, setSpeedKey] = useState(0);
+
     /** 切换倍速 */
     const cycleSpeed = useCallback(() => {
         const idx = SPEED_OPTIONS.indexOf(speed);
         const next = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
         setSpeed(next);
-        if (ref.current?.rate !== undefined) ref.current.rate = next;
+        setSpeedKey(k => k + 1);
     }, [speed]);
 
     if (!Video) {
@@ -122,6 +124,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     return (
         <TouchableOpacity activeOpacity={1} style={styles.root} onPress={resetHideTimer}>
             <Video
+                key={speedKey}
                 ref={ref}
                 source={{ uri, headers: headers || {} }}
                 style={styles.video}

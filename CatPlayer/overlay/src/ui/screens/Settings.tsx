@@ -7,7 +7,9 @@ import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ScrollView 
 import { StorageService } from '../../storage/StorageService';
 import NodeService from '../../node/NodeService';
 import { SOURCE } from '../../config';
-import type { PlayerType } from '../../storage/StorageService';
+
+/** 播放器类型 */
+type PlayerType = 'builtin' | 'mpv' | 'mdk';
 
 /** 播放器类型选项定义 */
 const PLAYER_OPTIONS: { key: PlayerType; label: string }[] = [

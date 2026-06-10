@@ -120,9 +120,7 @@ export default function History() {
                 text: '清空',
                 style: 'destructive',
                 onPress: async () => {
-                    for (const h of list) {
-                        await StorageService.removeHistory(h.id, h.siteKey);
-                    }
+                    await StorageService.clearHistory();
                     setList([]);
                 },
             },
@@ -144,12 +142,11 @@ export default function History() {
         return (
             <SwipeableRow onRemove={() => removeItem(item.id, item.siteKey)}>
                 <TouchableOpacity style={s.row} onPress={() => goToDetail(item)} activeOpacity={0.7}>
-                    <Image
-                        source={item.pic ? { uri: item.pic } : undefined}
-                        style={s.thumb}
-                        defaultSource={undefined}
-                    />
-                    {!item.pic && <View style={s.thumbFallback} />}
+                    {item.pic ? (
+                        <Image source={{ uri: item.pic }} style={s.thumb} />
+                    ) : (
+                        <View style={s.thumbFallback} />
+                    )}
                     <View style={s.info}>
                         <Text style={s.name} numberOfLines={1}>{item.name}</Text>
                         <Text style={s.sub} numberOfLines={1}>{item.siteName}</Text>

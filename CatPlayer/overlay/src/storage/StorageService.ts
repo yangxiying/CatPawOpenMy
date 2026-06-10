@@ -1,59 +1,51 @@
 /**
- * 持久化存储服务：收藏、观看历史、应用设置。
- * 优先使用 @react-native-async-storage/async-storage；
- * 若未安装则自动降级为内存 Map（进程重启后丢失）。
+ * 持久化存储服务
+ * 使用 react-native-fs 文件存储（已有依赖，无需新增 native 模块）
+ * 存储路径: DocumentDirectoryPath/catplayer/store.json
  */
 
-declare const require: any;
-
-let AsyncStorage: any = null;
+let RNFS: any = null;
 try {
-    AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    // @ts-ignore — 可选依赖
+    RNFS = require('react-native-fs');
 } catch {
-    AsyncStorage = null;
+    RNFS = null;
 }
 
-/** 内存降级存储 */
-const memStore = new Map<string, string>();
+const STORE_FILE = (RNFS?.DocumentDirectoryPath || '/tmp') + '/catplayer/store.json';
 
-/** 历史记录上限（FIFO） */
-const HISTORY_LIMIT = 200;
+/** 内存缓存 */
+let cache: Record<string, any> | null = null;
 
-/** 存储键前缀，避免冲突 */
-const KEYS = {
-    FAVORITES: '@CatPlayer/favorites',
-    HISTORY: '@CatPlayer/history',
-    SETTINGS_PREFIX: '@CatPlayer/setting/',
-} as const;
-
-// ─── 通用读写 ────────────────────────────────────────────────
-
-/** 从持久化层读取原始 JSON 字符串并反序列化 */
-async function read<T>(key: string, fallback: T): Promise<T> {
+/** 读取整个存储 */
+async function loadStore(): Promise<Record<string, any>> {
+    if (cache) return cache;
+    if (!RNFS) return {};
     try {
-        const raw = AsyncStorage
-            ? await AsyncStorage.getItem(key)
-            : memStore.get(key) ?? null;
-        return raw ? JSON.parse(raw) : fallback;
+        const exists = await RNFS.exists(STORE_FILE);
+        if (!exists) { cache = {}; return cache; }
+        const raw = await RNFS.readFile(STORE_FILE, 'utf8');
+        cache = JSON.parse(raw);
     } catch {
-        return fallback;
+        cache = {};
     }
+    return cache!;
 }
 
-/** 将数据序列化后写入持久化层 */
-async function write(key: string, value: unknown): Promise<void> {
-    const raw = JSON.stringify(value);
-    if (AsyncStorage) {
-        await AsyncStorage.setItem(key, raw);
-    } else {
-        memStore.set(key, raw);
-    }
+/** 写入整个存储 */
+async function saveStore(store: Record<string, any>): Promise<void> {
+    cache = store;
+    if (!RNFS) return;
+    try {
+        const dir = STORE_FILE.substring(0, STORE_FILE.lastIndexOf('/'));
+        const dirExists = await RNFS.exists(dir);
+        if (!dirExists) await RNFS.mkdir(dir);
+        await RNFS.writeFile(STORE_FILE, JSON.stringify(store), 'utf8');
+    } catch { /* ignore write failures */ }
 }
-
-// ─── 类型定义 ────────────────────────────────────────────────
 
 /** 收藏条目 */
-export interface FavoriteItem {
+export type FavoriteItem = {
     id: string;
     name: string;
     pic: string;
@@ -62,10 +54,10 @@ export interface FavoriteItem {
     siteName: string;
     siteApi: string;
     addedAt: number;
-}
+};
 
-/** 观看历史条目 */
-export interface HistoryItem {
+/** 历史条目 */
+export type HistoryItem = {
     id: string;
     name: string;
     pic: string;
@@ -74,130 +66,99 @@ export interface HistoryItem {
     siteName: string;
     siteApi: string;
     lastEpisode: string;
-    /** 上次播放位置（秒） */
     lastPosition: number;
-    /** 上次播放时长（秒） */
     lastDuration: number;
     updatedAt: number;
-}
+};
 
-/** 播放器类型 */
-export type PlayerType = 'builtin' | 'mpv' | 'mdk';
-
-/** 设置键与值类型映射 */
-export interface SettingsMap {
-    sourceUrl: string;
-    sourceAuth: string;
-    playerType: PlayerType;
-    defaultSpeed: number;
-}
-
-// ─── 收藏 ────────────────────────────────────────────────────
-
-/** 添加收藏，若已存在则更新 addedAt */
-async function addFavorite(item: FavoriteItem): Promise<void> {
-    const list = await read<FavoriteItem[]>(KEYS.FAVORITES, []);
-    const idx = list.findIndex(f => f.id === item.id && f.siteKey === item.siteKey);
-    if (idx >= 0) {
-        list[idx] = { ...list[idx], ...item, addedAt: Date.now() };
-    } else {
-        list.unshift({ ...item, addedAt: item.addedAt || Date.now() });
-    }
-    await write(KEYS.FAVORITES, list);
-}
-
-/** 移除收藏，按 id + siteKey 匹配 */
-async function removeFavorite(id: string, siteKey: string): Promise<void> {
-    const list = await read<FavoriteItem[]>(KEYS.FAVORITES, []);
-    await write(
-        KEYS.FAVORITES,
-        list.filter(f => !(f.id === id && f.siteKey === siteKey)),
-    );
-}
-
-/** 判断是否已收藏 */
-async function isFavorite(id: string, siteKey: string): Promise<boolean> {
-    const list = await read<FavoriteItem[]>(KEYS.FAVORITES, []);
-    return list.some(f => f.id === id && f.siteKey === siteKey);
-}
-
-/** 获取全部收藏列表 */
-async function listFavorites(): Promise<FavoriteItem[]> {
-    return read<FavoriteItem[]>(KEYS.FAVORITES, []);
-}
-
-// ─── 观看历史 ────────────────────────────────────────────────
-
-/**
- * 添加或更新历史记录。
- * 同一 id + siteKey 视为同一条目，更新播放信息并移至列表头部；
- * 超出 HISTORY_LIMIT 时淘汰最旧条目。
- */
-async function addHistory(item: HistoryItem): Promise<void> {
-    const list = await read<HistoryItem[]>(KEYS.HISTORY, []);
-    const idx = list.findIndex(h => h.id === item.id && h.siteKey === item.siteKey);
-    const entry: HistoryItem = { ...item, updatedAt: item.updatedAt || Date.now() };
-    if (idx >= 0) {
-        list.splice(idx, 1);
-    }
-    list.unshift(entry);
-    if (list.length > HISTORY_LIMIT) {
-        list.length = HISTORY_LIMIT;
-    }
-    await write(KEYS.HISTORY, list);
-}
-
-/** 移除单条历史，按 id + siteKey 匹配 */
-async function removeHistory(id: string, siteKey: string): Promise<void> {
-    const list = await read<HistoryItem[]>(KEYS.HISTORY, []);
-    await write(
-        KEYS.HISTORY,
-        list.filter(h => !(h.id === id && h.siteKey === siteKey)),
-    );
-}
-
-/** 获取全部观看历史 */
-async function listHistory(): Promise<HistoryItem[]> {
-    return read<HistoryItem[]>(KEYS.HISTORY, []);
-}
-
-// ─── 设置 ────────────────────────────────────────────────────
-
-/** 读取单项设置，不存在时返回默认值 */
-async function getSetting<K extends keyof SettingsMap>(key: K): Promise<SettingsMap[K] | null> {
-    const defaults: SettingsMap = {
-        sourceUrl: '',
-        sourceAuth: '',
-        playerType: 'builtin',
-        defaultSpeed: 1.0,
-    };
-    const val = await read<SettingsMap[K] | null>(KEYS.SETTINGS_PREFIX + key, null);
-    return val ?? defaults[key] ?? null;
-}
-
-/** 写入单项设置，带简单校验 */
-async function setSetting<K extends keyof SettingsMap>(key: K, value: SettingsMap[K]): Promise<void> {
-    if (key === 'defaultSpeed') {
-        const speed = Number(value);
-        if (speed < 0.5 || speed > 3.0) return;
-    }
-    if (key === 'playerType') {
-        const allowed: PlayerType[] = ['builtin', 'mpv', 'mdk'];
-        if (!allowed.includes(value as PlayerType)) return;
-    }
-    await write(KEYS.SETTINGS_PREFIX + key, value);
-}
-
-// ─── 导出单例 ────────────────────────────────────────────────
+const MAX_HISTORY = 200;
 
 export const StorageService = {
-    addFavorite,
-    removeFavorite,
-    isFavorite,
-    listFavorites,
-    addHistory,
-    removeHistory,
-    listHistory,
-    getSetting,
-    setSetting,
+    // ─── 收藏 ───
+
+    /** 添加收藏，已存在则更新 */
+    async addFavorite(item: FavoriteItem): Promise<void> {
+        const store = await loadStore();
+        if (!store.favorites) store.favorites = [];
+        const idx = store.favorites.findIndex((f: FavoriteItem) => f.id === item.id && f.siteKey === item.siteKey);
+        if (idx >= 0) { store.favorites[idx] = item; }
+        else { store.favorites.push(item); }
+        await saveStore(store);
+    },
+
+    /** 移除收藏 */
+    async removeFavorite(id: string, siteKey: string): Promise<void> {
+        const store = await loadStore();
+        if (!store.favorites) return;
+        store.favorites = store.favorites.filter((f: FavoriteItem) => !(f.id === id && f.siteKey === siteKey));
+        await saveStore(store);
+    },
+
+    /** 判断是否已收藏 */
+    async isFavorite(id: string, siteKey: string): Promise<boolean> {
+        const store = await loadStore();
+        return (store.favorites || []).some((f: FavoriteItem) => f.id === id && f.siteKey === siteKey);
+    },
+
+    /** 获取全部收藏 */
+    async listFavorites(): Promise<FavoriteItem[]> {
+        const store = await loadStore();
+        return store.favorites || [];
+    },
+
+    // ─── 历史 ───
+
+    /** 添加/更新观看历史（同条目移至头部，上限 200 条） */
+    async addHistory(item: HistoryItem): Promise<void> {
+        const store = await loadStore();
+        if (!store.history) store.history = [];
+        store.history = store.history.filter((h: HistoryItem) => !(h.id === item.id && h.siteKey === item.siteKey));
+        store.history.unshift(item);
+        if (store.history.length > MAX_HISTORY) store.history = store.history.slice(0, MAX_HISTORY);
+        await saveStore(store);
+    },
+
+    /** 移除单条历史 */
+    async removeHistory(id: string, siteKey: string): Promise<void> {
+        const store = await loadStore();
+        if (!store.history) return;
+        store.history = store.history.filter((h: HistoryItem) => !(h.id === id && h.siteKey === siteKey));
+        await saveStore(store);
+    },
+
+    /** 获取全部历史（按 updatedAt 降序） */
+    async listHistory(): Promise<HistoryItem[]> {
+        const store = await loadStore();
+        return (store.history || []).sort((a: HistoryItem, b: HistoryItem) => b.updatedAt - a.updatedAt);
+    },
+
+    /** 清空全部历史 */
+    async clearHistory(): Promise<void> {
+        const store = await loadStore();
+        store.history = [];
+        await saveStore(store);
+    },
+
+    // ─── 设置 ───
+
+    /** 获取设置值 */
+    async getSetting(key: string): Promise<any> {
+        const defaults: Record<string, any> = {
+            sourceUrl: '',
+            sourceAuth: '',
+            playerType: 'builtin',
+            defaultSpeed: 1.0,
+        };
+        const store = await loadStore();
+        if (!store.settings) store.settings = {};
+        return store.settings[key] !== undefined ? store.settings[key] : defaults[key];
+    },
+
+    /** 设置值 */
+    async setSetting(key: string, value: any): Promise<void> {
+        const store = await loadStore();
+        if (!store.settings) store.settings = {};
+        store.settings[key] = value;
+        await saveStore(store);
+    },
 };
