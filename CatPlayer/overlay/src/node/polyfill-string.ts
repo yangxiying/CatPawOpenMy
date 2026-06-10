@@ -16,11 +16,11 @@ _log('polyfill start');
 // ============================================================
 globalThis.global = globalThis;
 globalThis.process = globalThis.process || {
-    env: { NODE_ENV: 'production', NODE_PATH: '/data', DEV_HTTP_PORT: '0' },
+    env: { NODE_ENV: 'production', NODE_PATH: '/data', DEV_HTTP_PORT: '0', CI: undefined, DEBUG: undefined, HTTPS_PROXY: undefined, HTTP_PROXY: undefined, JEST_WORKER_ID: undefined, NODE_DEBUG: undefined, NODE_V8_COVERAGE: undefined, NO_PROXY: undefined, UNDICI_NO_FG: undefined, http_proxy: undefined, https_proxy: undefined, no_proxy: undefined },
     cwd: () => '/',
     nextTick: (fn, ...args) => setTimeout(() => fn(...args), 0),
     version: 'v18.20.4',
-    versions: { node: '18.20.4', v8: '11.3', modules: '108' },
+    versions: { node: '18.20.4', v8: '11.3', modules: '108', icu: '72.1' },
     platform: 'darwin',
     arch: 'arm64',
     argv: ['node', 'main.js'],
@@ -64,6 +64,8 @@ if (!globalThis.Buffer) {
             b.fill(fill);
             return b;
         }
+        static allocUnsafe(size) { return Buffer.alloc(size); }
+        static allocUnsafeSlow(size) { return Buffer.alloc(size); }
         static concat(buffers) {
             let total = 0;
             for (const b of buffers) total += b.length;
@@ -81,6 +83,7 @@ if (!globalThis.Buffer) {
     };
     globalThis.Buffer.isBuffer = (obj) => obj instanceof Buffer;
     globalThis.Buffer.byteLength = (str) => new TextEncoder().encode(str).length;
+    globalThis.Buffer.isView = (obj) => obj instanceof ArrayBuffer || obj instanceof DataView || (obj && obj.buffer instanceof ArrayBuffer);
 }
 
 // ============================================================
@@ -286,10 +289,11 @@ function httpRequestPolyfill(url, options) {
 // ============================================================
 function httpPolyfill() {
     const Agent = class Agent extends EventEmitterPolyfill {
-        constructor() { super(); }
+        constructor(opts) { super(); this.options = Object.assign({ rejectUnauthorized: false, keepAlive: true }, opts || {}); }
         createConnection() { return {}; }
         destroy() {}
     };
+    const globalAgent = new Agent();
     return {
         createServer: createServerPolyfill,
         request: httpRequestPolyfill,
@@ -297,7 +301,7 @@ function httpPolyfill() {
         METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
         STATUS_CODES: { 200: 'OK', 404: 'Not Found', 500: 'Internal Server Error' },
         Agent,
-        globalAgent: new Agent(),
+        globalAgent,
         maxHeaderSize: 16384,
     };
 }
@@ -372,14 +376,15 @@ function cryptoPolyfill() {
 // 7. fs polyfill (最小化)
 // ============================================================
 function fsPolyfill() {
+    function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
     return {
         existsSync: () => false,
-        readFileSync: () => { throw new Error('fs.readFileSync not available in WebView'); },
-        writeFileSync: () => { throw new Error('fs.writeFileSync not available in WebView'); },
+        readFileSync: () => { throw enoent('ENOENT: no such file or directory, read'); },
+        writeFileSync: () => {},
         mkdirSync: () => {},
         mkdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
-        statSync: () => { throw new Error('fs.statSync not available'); },
-        stat: (path, cb) => { process.nextTick(() => cb(new Error('ENOENT'))); },
+        statSync: () => { throw enoent('ENOENT: no such file or directory, stat'); },
+        stat: (path, cb) => { process.nextTick(() => cb(enoent())); },
         readdirSync: () => [],
         openSync: () => -1,
         open: (path, flags, mode, cb) => { if (typeof mode === 'function') { cb = mode; } process.nextTick(() => cb(null, -1)); },
@@ -398,6 +403,16 @@ function fsPolyfill() {
         ftruncateSync: () => {},
         realpathSync: (p) => p,
         access: (path, mode, cb) => { if (typeof mode === 'function') { cb = mode; } if (cb) process.nextTick(cb); },
+        readFile: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(enoent())); },
+        unlink: (path, cb) => { if (cb) process.nextTick(() => cb(enoent())); },
+        unlinkSync: () => {},
+        readdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(null, [])); },
+        rename: (oldPath, newPath, cb) => { if (cb) process.nextTick(cb); },
+        copyFile: (src, dest, cb) => { if (cb) process.nextTick(cb); },
+        appendFile: (path, data, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
+        watch: (path, opts, cb) => ({ on: () => {}, close: () => {} }),
+        exists: (path, cb) => { if (cb) process.nextTick(() => cb(false)); },
+        promises: undefined,
     };
 }
 
@@ -405,23 +420,85 @@ function fsPolyfill() {
 // 8. require polyfill
 // ============================================================
 const MODULES = {
-    'http': { default: httpPolyfill(), ...httpPolyfill() },
-    'https': { default: httpPolyfill(), ...httpPolyfill() },
+    'http': (() => { const m = httpPolyfill(); m.default = m; m.__esModule = true; return m; })(),
+    'https': (() => { const m = httpPolyfill(); m.default = m; m.__esModule = true; return m; })(),
     'events': EVENT_MODULE,
-    'stream': { Stream: EventEmitterPolyfill, Readable: EventEmitterPolyfill, Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); } },
-    'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), constants: {} },
-    'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']), lookup: (h, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } cb && cb(null, '127.0.0.1', 4); } },
+    'stream': { Stream: EventEmitterPolyfill, Readable: Object.assign(EventEmitterPolyfill, { from: (iterable) => new EventEmitterPolyfill() }), Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); }, addAbortSignal: (signal, stream) => stream },
+    'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createInflateRaw: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), createDeflateRaw: () => new EventEmitterPolyfill(), createGzip: () => new EventEmitterPolyfill(), constants: {}, Z_NO_FLUSH: 0, Z_PARTIAL_FLUSH: 1, Z_SYNC_FLUSH: 2, Z_FULL_FLUSH: 3, Z_FINISH: 4, Z_BLOCK: 5, Z_OK: 0, Z_STREAM_END: 1, Z_NEED_DICT: 2, Z_ERRNO: -1, Z_STREAM_ERROR: -2, Z_DATA_ERROR: -3, Z_MEM_ERROR: -4, Z_BUF_ERROR: -5, Z_VERSION_ERROR: -6, Z_NO_COMPRESSION: 0, Z_BEST_SPEED: 1, Z_BEST_COMPRESSION: 9, Z_DEFAULT_COMPRESSION: -1, Z_FILTERED: 1, Z_HUFFMAN_ONLY: 2, Z_RLE: 3, Z_FIXED: 4, Z_DEFAULT_STRATEGY: 0, Z_DEFLATED: 8, Z_NULL: 0, Z_DEFAULT_WINDOWBITS: 15 },
+    'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']), lookup: (h, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } cb && cb(null, '127.0.0.1', 4); }, setDefaultResultOrder: () => {}, getDefaultResultOrder: () => 'ipv4first' },
     'tls': { TLSSocket: EventEmitterPolyfill, connect: () => ({ on: () => {} }) },
     'tty': { isatty: () => false },
-    'net': { Socket: EventEmitterPolyfill, createConnection: () => ({ on: () => {}, pipe: () => {} }), connect: () => ({ on: () => {} }) },
+    'net': { Socket: EventEmitterPolyfill, createConnection: () => ({ on: () => {}, pipe: () => {} }), connect: () => ({ on: () => {} }), isIP: (addr) => { if (/^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/.test(addr)) return 4; if (addr.includes(':')) return 6; return 0; }, isIPv4: (addr) => /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/.test(addr), isIPv6: (addr) => addr.includes(':') },
     'os': { platform: () => 'darwin', homedir: () => '/var/mobile', tmpdir: () => '/tmp', type: () => 'Darwin', arch: () => 'arm64', hostname: () => 'CatPlayer', cpus: () => [{ model: 'Apple' }], totalmem: () => 6000000000, freemem: () => 3000000000, uptime: () => 0, networkInterfaces: () => ({}) },
     'path': pathPolyfill(),
     'url': urlPolyfill(),
     'fs': fsPolyfill(),
     'constants': {},
-    'worker_threads': {},
+    'diagnostics_channel': { channel: (name) => ({ publish: () => {}, subscribe: () => ({ unsubscribe: () => {} }) }) },
+    'async_hooks': { AsyncLocalStorage: class AsyncLocalStorage { getStore() { return this._store; } run(store, cb, ...args) { this._store = store; return cb(...args); } }, AsyncResource: class AsyncResource { constructor(type) { this.type = type; } runInAsyncScope(cb, ...args) { return cb(...args); } emitDestroy() {} } },
+    'http2': { createSecureServer: () => new EventEmitterPolyfill(), createServer: () => new EventEmitterPolyfill(), constants: {}, Http2ServerRequest: EventEmitterPolyfill, Http2ServerResponse: EventEmitterPolyfill },
+    'perf_hooks': { performance: globalThis.performance || { now: () => Date.now(), timing: { navigationStart: 0 } }, PerformanceObserver: class PerformanceObserver { constructor() {} observe() {} disconnect() {} } },
+    'console': globalThis.console || { log: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {} },
+    'vm': { createContext: (ctx) => ctx || {}, Script: class Script { constructor(code) { this.code = code; } runInContext(ctx) { return new Function('return ' + this.code)(); } } },
+    'string_decoder': { StringDecoder: class StringDecoder { constructor(encoding) { this.encoding = encoding || 'utf8'; } write(buffer) { return buffer.toString(this.encoding); } end(buffer) { return this.write(buffer); } } },
+    'querystring': { parse: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; }, stringify: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), encode: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), decode: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; } },
+    'worker_threads': { parentPort: null, workerData: {}, isMainThread: true, threadId: 0, markAsUncloneable: () => {} },
     'child_process': {},
-    'fs/promises': { access: () => Promise.resolve(), readFile: () => Promise.reject(new Error('fs/promises not available')), writeFile: () => Promise.resolve(), mkdir: () => Promise.resolve(), unlink: () => Promise.resolve(), readdir: () => Promise.resolve([]), stat: () => Promise.resolve({}) },
+    'fs/promises': (() => {
+        var _memFs = {};
+        function enoent() { const e = new Error('ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+        return {
+            access: (path) => Promise.resolve(undefined),
+            readFile: (path, opts) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) {
+                    var val = _memFs[key];
+                    if (opts && opts.encoding === 'utf-8') return Promise.resolve(typeof val === 'string' ? val : '');
+                    return Promise.resolve(val);
+                }
+                if (opts && opts.encoding === 'utf-8') return Promise.resolve('');
+                return Promise.resolve(new Uint8Array(0));
+            },
+            writeFile: (path, data, opts) => {
+                _memFs[String(path || '')] = data;
+                return Promise.resolve();
+            },
+            mkdir: (path, opts) => Promise.resolve(),
+            unlink: (path) => { delete _memFs[String(path || '')]; return Promise.resolve(); },
+            readdir: (path) => Promise.resolve(Object.keys(_memFs).filter(function(k) { return k.startsWith(String(path || '')); }).map(function(k) { return k.split('/').pop(); })),
+            stat: (path) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) return Promise.resolve({ isFile: () => true, isDirectory: () => false, size: 0, mtime: new Date(), atime: new Date() });
+                var e = enoent(); return Promise.reject(e);
+            },
+            lstat: (path) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) return Promise.resolve({ isFile: () => true, isDirectory: () => false, size: 0, mtime: new Date(), atime: new Date() });
+                var e = enoent(); return Promise.reject(e);
+            },
+            rename: (oldPath, newPath) => { _memFs[String(newPath || '')] = _memFs[String(oldPath || '')]; delete _memFs[String(oldPath || '')]; return Promise.resolve(); },
+            copyFile: (src, dest) => { _memFs[String(dest || '')] = _memFs[String(src || '')]; return Promise.resolve(); },
+            rmdir: (path) => Promise.resolve(),
+            chmod: (path, mode) => Promise.resolve(),
+            appendFile: (path, data, opts) => {
+                var key = String(path || '');
+                var prev = _memFs[key];
+                _memFs[key] = (prev || '') + (data || '');
+                return Promise.resolve();
+            },
+            open: (path, flags, mode) => Promise.reject(enoent()),
+            watch: (path, opts) => ({ on: () => {}, close: () => {} }),
+            exists: (path) => Promise.resolve(!!_memFs[String(path || '')]),
+            readlink: (path) => Promise.reject(enoent()),
+            symlink: (target, path, type) => Promise.resolve(),
+            truncate: (path, len) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) { var s = String(_memFs[key]); _memFs[key] = s.slice(0, len); }
+                return Promise.resolve();
+            },
+            utimes: (path, atime, mtime) => Promise.resolve(),
+        };
+    })(),
     'assert': (() => {
         function assert(val, msg) { if (!val) throw new Error(msg || 'Assertion failed'); }
         assert.ok = assert;
@@ -441,22 +518,31 @@ const MODULES = {
         inherits: (ctor, superCtor) => { if (!ctor || !superCtor) { if (ctor) ctor.prototype = {}; return; } const proto = superCtor.prototype || {}; ctor.super_ = superCtor; ctor.prototype = Object.create(proto, { constructor: { value: ctor, enumerable: false, configurable: true } }); },
         promisify: (fn) => (...a) => new Promise((res, rej) => fn(...a, (e, r) => e ? rej(e) : res(r))),
         deprecate: (fn) => fn,
+        debuglog: (section) => { const self = MODULES.util; return function(msg, ...args) { console.log(\`[\${section}]\`, typeof msg === 'string' ? msg : self.inspect(msg), ...args); }; },
         types: { isDate: (v) => v instanceof Date, isRegExp: (v) => v instanceof RegExp, isArray: Array.isArray, isBoolean: (v) => typeof v === 'boolean', isNumber: (v) => typeof v === 'number', isString: (v) => typeof v === 'string', isFunction: (v) => typeof v === 'function', isObject: (v) => v !== null && typeof v === 'object', isPrimitive: (v) => v === null || !['object','function'].includes(typeof v) },
         callbackify: (fn) => (...a) => { const cb = a.pop(); fn(...a).then(r => cb(null, r)).catch(e => cb(e)); },
         TextDecoder: globalThis.TextDecoder,
         TextEncoder: globalThis.TextEncoder,
     },
-    'module': { Module: class Module { static _resolveFilename() { return ''; } static _cache = {}; _compile() {} } },
-    'buffer': { Buffer: globalThis.Buffer, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
+    'module': { Module: class Module { static _resolveFilename() { return ''; } static _cache = {}; _compile() {} }, createRequire: (filename) => customRequire },
+    'buffer': { Buffer: globalThis.Buffer, Blob: class Blob { constructor(parts, opts) { this._parts = parts || []; this.type = opts?.type || ''; } async arrayBuffer() { return new ArrayBuffer(0); } get size() { return 0; } slice() { return new Blob(); } stream() { return new EventEmitterPolyfill(); } text() { return Promise.resolve(''); } }, File: class File extends (globalThis.Blob || Blob) { constructor(parts, name, opts) { super(parts, opts); this.name = name; this.lastModified = opts?.lastModified || Date.now(); } }, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
 };
 
 function customRequire(moduleName) {
-    if (MODULES[moduleName]) return MODULES[moduleName];
-    // Try without 'node:' prefix
-    const stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
-    if (stripped && MODULES[stripped]) return MODULES[stripped];
-    // console.warn('[polyfill] require(' + moduleName + ') → stub');
-    return {};
+    var mod = MODULES[moduleName];
+    if (!mod) {
+        var stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
+        if (stripped) mod = MODULES[stripped];
+    }
+    if (!mod) mod = {};
+    // Babel __esModule interop: ensure every module has __esModule and default
+    if (!mod.__esModule) mod.__esModule = true;
+    if (!mod.default) mod.default = mod;
+    // Diagnostic: log first few unusual requires
+    if (moduleName === 'node:https' || moduleName === 'https') {
+        _log('require(' + moduleName + ') => keys=' + Object.keys(mod).join(',') + ' default=' + (typeof mod.default));
+    }
+    return mod;
 }
 
 // ============================================================
@@ -547,11 +633,17 @@ window.addEventListener('message', (event) => {
 // 10. 注入
 // ============================================================
 globalThis.Buffer = globalThis.Buffer || globalThis.Buffer;
-globalThis.require = customRequire;
 globalThis.__filename = 'main.js';
 globalThis.__dirname = '/';
 globalThis.module = { exports: {} };
 globalThis.exports = globalThis.module.exports;
+
+// require 注入：多重保障，确保 WebView 各执行上下文都能访问
+// 使用自定义属性名避免被浏览器/引擎拦截
+window.__catpaw_require = customRequire;
+try { Object.defineProperty(globalThis, 'require', { value: customRequire, writable: true, configurable: true }); } catch { try { globalThis.require = customRequire; } catch {} }
+try { window.require = customRequire; } catch {}
+try { self.require = customRequire; } catch {}
 
 // ============================================================
 // 11. catServerFactory / catDartServerPort
