@@ -63,53 +63,32 @@ jobs:
           path: CatPlayer/app/ios/build/CatPlayer.ipa
           if-no-files-found: error
 
-      - name: Create GitHub Release
+      - name: Build release body
         if: github.ref == 'refs/heads/feat/catplayer-ios' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILD_MODE: ${{ github.event.inputs.mode || 'full' }}
-          RUN_NUM: ${{ github.run_number }}
-          REF_NAME: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
         run: |
+          echo "## CatPlayer iOS IPA ($BUILD_MODE) (unsigned)" > /tmp/release_body.md
+          echo "" >> /tmp/release_body.md
           if [ "$BUILD_MODE" = "minimal" ]; then
-            BODY="## CatPlayer iOS IPA ($BUILD_MODE) (unsigned)
-
-          **Source:** \`$REF_NAME\` @ \`$SHA\`
-          **Mode:** \`$BUILD_MODE\`
-
-          ### ⚠️ 这是 Minimal 版（无 nodejs-mobile）
-          用于排查：如果能启动说明 RN 本身没问题，崩溃来自 native module。
-          完整版请用其他 Release。"
+            echo "### ⚠️ 这是 Minimal 版（无 nodejs-mobile）" >> /tmp/release_body.md
+            echo "用于排查：如果能启动说明 RN 本身没问题，崩溃来自 native module。" >> /tmp/release_body.md
+            echo "完整版请用其他 Release。" >> /tmp/release_body.md
           else
-            BODY="## CatPlayer iOS IPA ($BUILD_MODE) (unsigned)
-
-          **Source:** \`$REF_NAME\` @ \`$SHA\`
-          **Mode:** \`$BUILD_MODE\`
-
-          ### 安装（未签名 → 侧载自签）
-          下载 \`CatPlayer.ipa\` 后用以下任一工具安装到 iPhone：
-          - [Sideloadly](https://sideloadly.io/)（Win/macOS，免费 Apple ID）
-          - [AltStore](https://altstore.io/)（免费 Apple ID，7 天自动续签）
-          - [TrollStore](https://github.com/opa334/TrollStore)（受支持 iOS 版本，永久签名）
-
-          > 免费 Apple ID 签名 7 天过期，到期重签即可。
-
-          ### 功能
-          - 内嵌 Node.js 运行 CatVod/CatPaw 爬虫源
-          - 视频/音频播放
-          - 全屏按钮自动横屏全屏
-          - 后台/息屏续播声音"
+            echo "### 安装（未签名 → 侧载自签）" >> /tmp/release_body.md
+            echo "下载 CatPlayer.ipa 后用以下任一工具安装到 iPhone：" >> /tmp/release_body.md
+            echo "- [Sideloadly](https://sideloadly.io/)（Win/macOS，免费 Apple ID）" >> /tmp/release_body.md
+            echo "- [AltStore](https://altstore.io/)（免费 Apple ID，7 天自动续签）" >> /tmp/release_body.md
+            echo "- [TrollStore](https://github.com/opa334/TrollStore)（受支持 iOS 版本，永久签名）" >> /tmp/release_body.md
+            echo "" >> /tmp/release_body.md
+            echo "### 功能" >> /tmp/release_body.md
+            echo "- 内嵌 Node.js 运行 CatVod/CatPaw 爬虫源" >> /tmp/release_body.md
+            echo "- 视频/音频播放" >> /tmp/release_body.md
+            echo "- 全屏按钮自动横屏全屏" >> /tmp/release_body.md
+            echo "- 后台/息屏续播声音" >> /tmp/release_body.md
           fi
-          # Write to file to preserve exact formatting
-          printf '%s' "$BODY" > /tmp/release_body.md
-          echo "RELEASE_BODY<<EOF" >> "$GITHUB_OUTPUT"
-          cat /tmp/release_body.md >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-        id: release_body
 
       - name: Create Release
-        if: steps.release_body.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ios-${{ github.event.inputs.mode || 'full' }}-v${{ github.run_number }}
