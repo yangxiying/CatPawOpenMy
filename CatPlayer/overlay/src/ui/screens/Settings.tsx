@@ -328,6 +328,8 @@ export default function Settings() {
             </View>
 
             {/* ── 其他设置 ── */}
+            <View style={styles.section}>
+                {renderSettingRow(
                     '🎬', '播放器', getPlayerLabel(),
                     () => setShowPlayerModal(true),
                 )}
