@@ -11,6 +11,7 @@ export default function Boot() {
     const [copied, setCopied] = useState(false);
 
     const go = async () => {
+        if (NodeService.isWebsiteSource) return;
         setErr(null);
         try {
             await NodeService.getBaseUrl();
@@ -31,6 +32,7 @@ export default function Boot() {
         }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
+            if (NodeService.isWebsiteSource) return;
             go();
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
         return () => { offLog(); offErr(); clearTimeout(timeout); };

@@ -92,84 +92,64 @@ window.__POLYFILL_DONE = 1;
                 onLog?.('WebView polyfill ready');
                 if (isWebsite) {
                     const bCode = bundleCode;
-                    const cCode = configCode;
                     wvRef.current?.injectJavaScript(`
 (async () => {
 var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
 try {
-    _log('hybrid source eval start');
+    _log('website eval start');
     var __req = window.__catpaw_require || globalThis.require || window.require;
     if (typeof __req !== 'function') { throw new Error('require not available'); }
 
-    // Step 1: Execute outer bundle to define globalThis.websiteBundle + catServerFactory
+    // Execute outer bundle to define globalThis.websiteBundle
     var __fn = new Function('require','module','exports','__filename','__dirname', ${JSON.stringify(bCode)});
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
     _log('outer bundle executed');
 
-    // Step 2: Start Fastify server (like server source does)
-    var _mod = __m.exports.default || __m.exports;
-    _log('mod.start=' + (typeof _mod.start) + ', has catServerFactory=' + (typeof globalThis.catServerFactory));
-    if (_mod.start) {
-        var config = { default: {} };
-        try {
-            var cfgCode = ${JSON.stringify(cCode)};
-            var cfgFn = new Function('exports','module',cfgCode);
-            var cfgM = {exports:{}};
-            cfgFn(cfgM.exports, cfgM);
-            var cfg = cfgM.exports.default || cfgM.exports;
-            config.default = cfg;
-            _log('config loaded');
-        } catch(e) { _log('config fail: ' + e); }
-        _log('calling mod.start...');
-        await _mod.start(config.default);
-        _log('mod.start returned, Fastify server ready');
-    } else {
-        _log('no mod.start, skip server init');
-    }
+    // 网站源只渲染 WebView UI，不启动 Fastify 服务
+    // 发送 port 消息让 RN 端 waitForReady() 继续
+    window.ReactNativeWebView?.postMessage(JSON.stringify({type:'port',port:0}));
+    _log('website mode: sent port=0');
 
-    // Step 3: Execute websiteBundle inner code for renderClient
     if (typeof globalThis.websiteBundle === 'undefined') {
-        _log('no websiteBundle, skip renderClient');
-    } else {
-        var innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
-        _log('innerCode len=' + innerCode.length);
-        var lastIdx = innerCode.lastIndexOf('})()');
-        if (lastIdx < 0) { throw new Error('cannot find })() patch point'); }
-        var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
-        var _origCR = ReactDOM.createRoot;
-        ReactDOM.createRoot = function(c) {
-            if (!c) {
-                var alt = document.getElementById('www') || document.getElementById('root');
-                if (!alt) { alt = document.createElement('div'); document.body.appendChild(alt); }
-                _log('createRoot(null) fallback: id='+(alt.id||'(none)'));
-                c = alt;
-            }
-            return _origCR.call(this, c);
-        };
-        var __fn2 = new Function('require','module','exports','__filename','__dirname', patched);
-        var __m2 = { exports: {} };
-        __fn2(__req, __m2, __m2.exports, '/main.js', '/');
-        _log('inner fn2 ok');
-        ReactDOM.createRoot = _origCR;
-        var ws = globalThis.__WS; delete globalThis.__WS;
-        _log('ws keys: ' + (ws ? Object.keys(ws).join(',') : 'null'));
-        if (ws && typeof ws.renderClient === 'function') {
-            var app = ws.renderClient();
-            if (app != null) {
-                var www = document.getElementById('www') || document.getElementById('root');
-                if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
-                if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
-                else { ReactDOM.createRoot(www).render(app); }
-            }
-            _log('renderClient OK');
-        } else {
-            _log('no renderClient');
+        throw new Error('not a website source');
+    }
+    var innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
+    _log('innerCode len=' + innerCode.length);
+    var lastIdx = innerCode.lastIndexOf('})()');
+    if (lastIdx < 0) { throw new Error('cannot find })() patch point'); }
+    var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
+    var _origCR = ReactDOM.createRoot;
+    ReactDOM.createRoot = function(c) {
+        if (!c) {
+            var alt = document.getElementById('www') || document.getElementById('root');
+            if (!alt) { alt = document.createElement('div'); document.body.appendChild(alt); }
+            c = alt;
         }
+        return _origCR.call(this, c);
+    };
+    var __fn2 = new Function('require','module','exports','__filename','__dirname', patched);
+    var __m2 = { exports: {} };
+    __fn2(__req, __m2, __m2.exports, '/main.js', '/');
+    _log('inner bundle executed');
+    ReactDOM.createRoot = _origCR;
+    var ws = globalThis.__WS; delete globalThis.__WS;
+    if (ws && typeof ws.renderClient === 'function') {
+        var app = ws.renderClient();
+        if (app != null) {
+            var www = document.getElementById('www') || document.getElementById('root');
+            if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
+            if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
+            else { ReactDOM.createRoot(www).render(app); }
+        }
+        _log('renderClient OK');
+    } else {
+        _log('no renderClient');
     }
 } catch(e) {
-    _log('ERROR: ' + (e && e.stack ? e.stack : String(e)));
-    window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:String(e)}));
+    _log('WEBSITE ERROR: ' + (e && e.stack ? e.stack : String(e)));
+    window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'website: '+String(e)}));
+    try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'port',port:-1})); } catch {}
 }
 })();
 `);

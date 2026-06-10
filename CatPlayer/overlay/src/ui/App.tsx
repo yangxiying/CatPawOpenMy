@@ -35,12 +35,20 @@ function isTabRoot(name: string): boolean {
 export default function App() {
     const [stack, setStack] = useState<Route[]>([{ name: 'Boot' }]);
     const [activeTab, setActiveTab] = useState('home');
+    const [isWebSrc, setIsWebSrc] = useState(false);
 
     const nav = useMemo<Nav>(() => ({
         push: (name, params) => setStack(s => [...s, { name, params }]),
         pop: () => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)),
         replace: (name, params) => setStack(s => [...s.slice(0, -1), { name, params }]),
     }), []);
+
+    /** 监听源类型变化，网站源时全屏显示 WebView */
+    useEffect(() => {
+        const off = NodeService.onSourceTypeChange(setIsWebSrc);
+        setIsWebSrc(NodeService.isWebsiteSource);
+        return off;
+    }, []);
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
@@ -72,6 +80,15 @@ export default function App() {
     const canBack = stack.length > 1;
     const isPlayer = cur.name === 'Player';
     const showTabBar = !isPlayer && cur.name !== 'Boot' && isTabRoot(cur.name);
+
+    // 网站源：全屏显示 WebView（网站 UI 在 WebView 内渲染）
+    if (isWebSrc && cur.name === 'Boot') {
+        return (
+            <NavContext.Provider value={nav}>
+                <NodeWebView visible={true} />
+            </NavContext.Provider>
+        );
+    }
 
     return (
         <NavContext.Provider value={nav}>
