@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Image, ActivityIndicator, ScrollView, StyleSheet, Dimensions } from 'react-native';
 import { useNav } from '../App';
 import { CatApi, Site, CatConfig } from '../../api/CatApi';
+import NodeService from '../../node/NodeService';
 
 const COLS = 3;
 const GAP = 8;
@@ -23,6 +24,15 @@ export default function Sites({ config }: { config: CatConfig }) {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
 
+    // 诊断日志
+    React.useEffect(() => {
+        console.log('[Sites] mounted: sites.length=' + sites.length + ' activeApi=' + activeApi);
+        NodeService?.log?.('[Sites] config.video.sites.length=' + sites.length);
+        if (sites.length > 0) {
+            NodeService?.log?.('[Sites] first site: name=' + sites[0].name + ' api=' + sites[0].api);
+        }
+    }, []);
+
     // 切换站点时拉取首页
     useEffect(() => {
         if (!activeApi) return;
@@ -36,8 +46,10 @@ export default function Sites({ config }: { config: CatConfig }) {
                 await CatApi.ensureInit(activeApi);
                 const home = await CatApi.home(activeApi);
                 if (cancel) return;
+                NodeService?.log?.('[Sites] home response: ' + JSON.stringify(home).slice(0, 300));
                 setClasses(home?.class || []);
                 const raw = home?.list || home?.likes || home?.recommend || [];
+                NodeService?.log?.('[Sites] classes=' + (home?.class?.length || 0) + ' recs=' + raw.length);
                 setRecs(Array.isArray(raw) ? raw.slice(0, 30) : []);
                 if (!raw.length) setMsg('该站暂无推荐，请选择分类浏览');
             } catch (e: any) {
