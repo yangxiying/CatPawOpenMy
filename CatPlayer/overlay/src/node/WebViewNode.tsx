@@ -91,51 +91,81 @@ window.__POLYFILL_DONE = 1;
                 readyHandledRef.current = true;
                 onLog?.('WebView polyfill ready');
                 if (isWebsite) {
+                    const bCode = bundleCode;
+                    const cCode = configCode;
                     wvRef.current?.injectJavaScript(`
 (async () => {
 var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
 try {
-    _log('website eval start');
+    _log('hybrid source eval start');
     var __req = window.__catpaw_require || globalThis.require || window.require;
     if (typeof __req !== 'function') { throw new Error('require not available'); }
-    var _origCR = ReactDOM.createRoot;
-    ReactDOM.createRoot = function(c) {
-        if (!c) {
-            var alt = document.getElementById('www') || document.getElementById('root');
-            if (!alt) { alt = document.createElement('div'); document.body.appendChild(alt); }
-            _log('createRoot(null) → fallback: id='+(alt.id||'(none)')+' tag='+alt.tagName);
-            c = alt;
-        }
-        return _origCR.call(this, c);
-    };
-    var __fn = new Function('require','module','exports','__filename','__dirname', ${JSON.stringify(bundleCode)});
+
+    // Step 1: Execute outer bundle to define globalThis.websiteBundle + catServerFactory
+    var __fn = new Function('require','module','exports','__filename','__dirname', ${JSON.stringify(bCode)});
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
-    if (typeof globalThis.websiteBundle === 'undefined') { throw new Error('not a website source'); }
-    var innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
-    _log('innerCode len=' + innerCode.length);
-    var lastIdx = innerCode.lastIndexOf('})()');
-    if (lastIdx < 0) { throw new Error('cannot find })() patch point'); }
-    var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
-    var __fn2 = new Function('require','module','exports','__filename','__dirname', patched);
-    var __m2 = { exports: {} };
-    __fn2(__req, __m2, __m2.exports, '/main.js', '/');
-    _log('inner fn2 ok');
-    ReactDOM.createRoot = _origCR;
-    var ws = globalThis.__WS; delete globalThis.__WS;
-    _log('ws keys: ' + (ws ? Object.keys(ws).join(',') : 'null'));
-    if (ws && typeof ws.renderClient === 'function') {
-        var app = ws.renderClient();
-        if (app != null) {
-            var www = document.getElementById('www') || document.getElementById('root');
-            if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
-            if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
-            else { ReactDOM.createRoot(www).render(app); }
-        }
-        _log('rendered OK');
-        window.ReactNativeWebView?.postMessage(JSON.stringify({type:'websiteReady', port:1}));
+    _log('outer bundle executed');
+
+    // Step 2: Start Fastify server (like server source does)
+    var _mod = __m.exports.default || __m.exports;
+    _log('mod.start=' + (typeof _mod.start) + ', has catServerFactory=' + (typeof globalThis.catServerFactory));
+    if (_mod.start) {
+        var config = { default: {} };
+        try {
+            var cfgCode = ${JSON.stringify(cCode)};
+            var cfgFn = new Function('exports','module',cfgCode);
+            var cfgM = {exports:{}};
+            cfgFn(cfgM.exports, cfgM);
+            var cfg = cfgM.exports.default || cfgM.exports;
+            config.default = cfg;
+            _log('config loaded');
+        } catch(e) { _log('config fail: ' + e); }
+        _log('calling mod.start...');
+        await _mod.start(config.default);
+        _log('mod.start returned, Fastify server ready');
     } else {
-        _log('no renderClient');
+        _log('no mod.start, skip server init');
+    }
+
+    // Step 3: Execute websiteBundle inner code for renderClient
+    if (typeof globalThis.websiteBundle === 'undefined') {
+        _log('no websiteBundle, skip renderClient');
+    } else {
+        var innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
+        _log('innerCode len=' + innerCode.length);
+        var lastIdx = innerCode.lastIndexOf('})()');
+        if (lastIdx < 0) { throw new Error('cannot find })() patch point'); }
+        var patched = innerCode.slice(0, lastIdx) + 'globalThis.__WS=module.exports;' + innerCode.slice(lastIdx);
+        var _origCR = ReactDOM.createRoot;
+        ReactDOM.createRoot = function(c) {
+            if (!c) {
+                var alt = document.getElementById('www') || document.getElementById('root');
+                if (!alt) { alt = document.createElement('div'); document.body.appendChild(alt); }
+                _log('createRoot(null) fallback: id='+(alt.id||'(none)'));
+                c = alt;
+            }
+            return _origCR.call(this, c);
+        };
+        var __fn2 = new Function('require','module','exports','__filename','__dirname', patched);
+        var __m2 = { exports: {} };
+        __fn2(__req, __m2, __m2.exports, '/main.js', '/');
+        _log('inner fn2 ok');
+        ReactDOM.createRoot = _origCR;
+        var ws = globalThis.__WS; delete globalThis.__WS;
+        _log('ws keys: ' + (ws ? Object.keys(ws).join(',') : 'null'));
+        if (ws && typeof ws.renderClient === 'function') {
+            var app = ws.renderClient();
+            if (app != null) {
+                var www = document.getElementById('www') || document.getElementById('root');
+                if (!www) { www = document.createElement('div'); www.id = 'www'; document.body.appendChild(www); }
+                if (typeof app === 'function') { ReactDOM.createRoot(www).render(React.createElement(app)); }
+                else { ReactDOM.createRoot(www).render(app); }
+            }
+            _log('renderClient OK');
+        } else {
+            _log('no renderClient');
+        }
     }
 } catch(e) {
     _log('ERROR: ' + (e && e.stack ? e.stack : String(e)));
@@ -153,7 +183,6 @@ try {
 var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
 try {
     _log('bundle eval start, len=${bCode.length}');
-    // Pre-flight: verify polyfill provides required modules
     var __req = window.__catpaw_require || globalThis.require;
     if (typeof __req !== 'function') {
         throw new Error('require not available (type=' + typeof __req + ')');
@@ -166,7 +195,6 @@ try {
         }
     }
     _log('polyfill modules OK');
-    // Check for external require calls that polyfill can't handle
     var _code = ${JSON.stringify(bCode)};
     var _extReqs = _code.match(/require\\("([^"]+)"\\)/g) || [];
     var _extModules = _extReqs.map(function(r){ return r.match(/require\\("([^"]+)"\\)/)[1]; });

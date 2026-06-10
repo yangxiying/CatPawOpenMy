@@ -34,7 +34,6 @@ function isTabRoot(name: string): boolean {
 
 export default function App() {
     const [stack, setStack] = useState<Route[]>([{ name: 'Boot' }]);
-    const [isWebSrc, setIsWebSrc] = useState(false);
     const [activeTab, setActiveTab] = useState('home');
 
     const nav = useMemo<Nav>(() => ({
@@ -42,17 +41,6 @@ export default function App() {
         pop: () => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)),
         replace: (name, params) => setStack(s => [...s.slice(0, -1), { name, params }]),
     }), []);
-
-    /** 启动 NodeService 并监听源类型变化 */
-    useEffect(() => {
-        NodeService.init();
-        const off = NodeService.onSourceTypeChange((isWeb) => {
-            setIsWebSrc(isWeb);
-        });
-        // 立即同步一次当前状态
-        setIsWebSrc(NodeService.isWebsiteSource);
-        return off;
-    }, []);
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
@@ -83,20 +71,7 @@ export default function App() {
     const Screen = SCREENS[cur.name] || Boot;
     const canBack = stack.length > 1;
     const isPlayer = cur.name === 'Player';
-    // 网站源且当前在网站源根页面时，全屏显示 WebView
-    // 只有在网站源且当前页面是 Boot（网站源入口）时才显示 WebView
-    const isBoot = cur.name === 'Boot';
-    const showWebView = NodeService.isWebsiteSource && isBoot && !isPlayer;
     const showTabBar = !isPlayer && cur.name !== 'Boot' && isTabRoot(cur.name);
-
-    // 网站源下，Boot 页面直接返回 WebView，不渲染原生 UI
-    if (showWebView) {
-        return (
-            <NavContext.Provider value={nav}>
-                <NodeWebView visible={true} />
-            </NavContext.Provider>
-        );
-    }
 
     return (
         <NavContext.Provider value={nav}>

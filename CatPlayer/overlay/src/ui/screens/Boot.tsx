@@ -9,7 +9,6 @@ export default function Boot() {
     const [logs, setLogs] = useState<string[]>([]);
     const [err, setErr] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
-    const [done, setDone] = useState(false);
 
     const go = async () => {
         setErr(null);
@@ -26,25 +25,16 @@ export default function Boot() {
         const offLog = NodeService.onLog(m => {
             setLogs(l => [...l.slice(-9), m]);
         });
-        const offSrc = NodeService.onSourceTypeChange(isWeb => {
-            if (isWeb) setDone(true);
-        });
         const offErr = NodeService.onError(m => setErr(m));
         const timeout = setTimeout(() => {
-            if (!done) setErr('等待超时（60s）— WebView 未就绪');
+            setErr('等待超时（60s）— WebView 未就绪');
         }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
-            if (NodeService.isWebsiteSource) {
-                setDone(true);
-            } else {
-                go();
-            }
+            go();
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
-        return () => { offLog(); offSrc(); offErr(); clearTimeout(timeout); };
+        return () => { offLog(); offErr(); clearTimeout(timeout); };
     }, []);
-
-    if (done) return null;
 
     return (
         <View style={styles.c}>
