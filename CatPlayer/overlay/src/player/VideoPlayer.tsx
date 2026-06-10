@@ -1,21 +1,10 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, NativeEventEmitter, NativeModules, requireNativeComponent, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { Quality } from '../api/CatApi';
 import { StorageService } from '../storage/StorageService';
 
 let Video: any = null;
 try { Video = require('react-native-video').default; } catch (e) { /* not installed */ }
-
-const { MPVPlayerModule, MDKPlayerModule } = NativeModules || ({} as any);
-const mpvEmitter = MPVPlayerModule ? new NativeEventEmitter(MPVPlayerModule) : null;
-const mdkEmitter = MDKPlayerModule ? new NativeEventEmitter(MDKPlayerModule) : null;
-
-let MPVView: any = null;
-let MDKView: any = null;
-try { MPVView = MPVPlayerModule && MPVPlayerModule.ViewManager ? requireNativeComponent('MPVPlayerView') : null; } catch {}
-try { MDKView = MDKPlayerModule && MDKPlayerModule.ViewManager ? requireNativeComponent('MDKPlayerView') : null; } catch {}
-
-type PlayerEngine = 'builtin' | 'mpv' | 'mdk';
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
 
@@ -31,7 +20,6 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     siteKey?: string;
 }) {
     const ref = useRef<any>(null);
-    const nativeViewRef = useRef<any>(null);
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [speed, setSpeed] = useState(1.0);
@@ -40,7 +28,6 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     const [position, setPosition] = useState(0);
     const [duration, setDuration] = useState(0);
     const [resumePos, setResumePos] = useState<number | null>(null);
-    const [playerType, setPlayerType] = useState<PlayerEngine>('builtin');
     const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     /** 加载上次播放进度，用于续播 */
@@ -55,25 +42,11 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
         })();
     }, [vodId, siteKey]);
 
-    const NativePlayer = playerType === 'mpv' ? MPVView : playerType === 'mdk' ? MDKView : null;
-    const canUseNative = NativePlayer && ((playerType === 'mpv' && MPVView) || (playerType === 'mdk' && MDKView));
-
-    /** MPV/MDK: 自动开始播放 */
-    useEffect(() => {
-        if (!canUseNative || !nativeViewRef.current) return;
-        const module = playerType === 'mpv' ? MPVPlayerModule : MDKPlayerModule;
-        if (module) {
-            module.play(uri, headers || {});
-        }
-    }, [canUseNative, playerType, uri]);
-
     /** 加载默认倍速设置 */
     useEffect(() => {
         (async () => {
             const s = await StorageService.getSetting('defaultSpeed');
             if (typeof s === 'number' && s >= 0.5 && s <= 3.0) setSpeed(s);
-            const pt = await StorageService.getSetting('playerType');
-            if (pt === 'mpv' || pt === 'mdk') setPlayerType(pt);
         })();
     }, []);
 
@@ -150,49 +123,27 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
 
     return (
         <TouchableOpacity activeOpacity={1} style={styles.root} onPress={resetHideTimer}>
-            {canUseNative ? (
-                <NativePlayer
-                    ref={(r: any) => { if (r) { nativeViewRef.current = r; } }}
-                    style={styles.video}
-                    onLoadStart={() => { setLoading(true); setErr(null); }}
-                    onLoaded={(e: any) => { handleLoad(e); }}
-                    onProgress={(e: any) => { handleProgress(e); }}
-                    onError={(e: any) => {
-                        setLoading(false);
-                        setErr(e?.error || '播放失败');
-                    }}
-                />
-            ) : Video ? (
-                <Video
-                    key={speedKey}
-                    ref={ref}
-                    source={{ uri, headers: headers || {} }}
-                    style={styles.video}
-                    controls
-                    resizeMode="contain"
-                    fullscreenOrientation="landscape"
-                    fullscreenAutorotate
-                    playInBackground
-                    playWhenInactive
-                    ignoreSilentSwitch="ignore"
-                    rate={speed}
-                    onLoadStart={() => { setLoading(true); setErr(null); }}
-                    onLoad={handleLoad}
-                    onProgress={handleProgress}
-                    onError={(e: any) => {
-                        setLoading(false);
-                        setErr(e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e?.error || e));
-                    }}
-                />
-            ) : (
-                <View style={styles.fallback}>
-                    <Text style={styles.fbTitle}>无可用播放器</Text>
-                    <Text style={styles.fbUrl} numberOfLines={3}>{uri}</Text>
-                    <TouchableOpacity style={styles.fbBtn} onPress={() => Linking.openURL(uri)}>
-                        <Text style={styles.fbBtnT}>在 Safari 中打开</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
+            <Video
+                key={speedKey}
+                ref={ref}
+                source={{ uri, headers: headers || {} }}
+                style={styles.video}
+                controls
+                resizeMode="contain"
+                fullscreenOrientation="landscape"
+                fullscreenAutorotate
+                playInBackground
+                playWhenInactive
+                ignoreSilentSwitch="ignore"
+                rate={speed}
+                onLoadStart={() => { setLoading(true); setErr(null); }}
+                onLoad={handleLoad}
+                onProgress={handleProgress}
+                onError={(e: any) => {
+                    setLoading(false);
+                    setErr(e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e?.error || e));
+                }}
+            />
 
             {showControls && (
                 <View style={styles.topbar}>
