@@ -10,6 +10,8 @@ export default function Boot() {
     const [err, setErr] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
+    const [showGo, setShowGo] = useState<{config: CatConfig}|null>(null);
+
     const go = async () => {
         if (NodeService.isWebsiteSource) return;
         setErr(null);
@@ -20,7 +22,7 @@ export default function Boot() {
             const allKeys = config ? Object.keys(config) : [];
             console.log('[Boot] config keys:', allKeys, 'video.sites:', siteCount);
             setLogs(l => [...l, `config keys=[${allKeys}] video.sites=${siteCount}`]);
-            nav.replace('Sites', { config });
+            setShowGo({config});
         } catch (e: any) {
             setLogs(l => [...l, `getConfig error: ${String(e?.message || e)}`]);
             setErr(String(e?.message || e));
@@ -45,18 +47,20 @@ export default function Boot() {
 
     return (
         <View style={styles.c}>
-            {!err && <ActivityIndicator size="large" color="#7aa2ff" />}
-            <Text style={styles.t}>{err ? '加载失败' : '正在启动内嵌服务…'}</Text>
+            {!err && !showGo && <ActivityIndicator size="large" color="#7aa2ff" />}
+            <Text style={styles.t}>{showGo ? '加载完成' : err ? '加载失败' : '正在启动内嵌服务…'}</Text>
             <ScrollView style={styles.logbox} contentContainerStyle={{ padding: 10 }}>
                 {logs.map((l, i) => <Text key={i} style={styles.log}>• {l}</Text>)}
                 {err ? <Text style={styles.errtxt}>{err}</Text> : null}
             </ScrollView>
             <View style={styles.row}>
-                <TouchableOpacity style={styles.btn} onPress={() => { NodeService.retry(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
+                {showGo && (
+                    <TouchableOpacity style={[styles.btn, styles.goBtn]} onPress={() => nav.replace('Sites', { config: showGo.config })}>
+                        <Text style={styles.btnt}>进入</Text>
+                    </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.btn} onPress={() => { NodeService.retry(); setShowGo(null); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
                     <Text style={styles.btnt}>重试</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => { NodeService.forceRefresh(); NodeService.waitForReady().then(go).catch(e => setErr(String(e))); }}>
-                    <Text style={styles.btnt}>强制重新下载</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.btn, styles.btn3]} onPress={async () => {
                     const text = logs.join('\n') + (err ? '\n' + err : '');
@@ -79,7 +83,7 @@ const styles = StyleSheet.create({
     errtxt: { color: '#ff6b6b', fontSize: 12, marginTop: 8 },
     row: { flexDirection: 'row', marginTop: 18, gap: 12 },
     btn: { backgroundColor: '#2a2f45', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 8 },
-    btn2: { backgroundColor: '#3a2f45' },
+    goBtn: { backgroundColor: '#7aa2ff' },
     btn3: { backgroundColor: '#2a4535' },
     btnt: { color: '#fff', fontSize: 15 },
 });
