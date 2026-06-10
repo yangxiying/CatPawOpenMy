@@ -1,48 +1,107 @@
-/**
- * 设置页面：播放源配置、播放器偏好、关于信息。
- * 所有设置通过 StorageService 持久化，播放源变更后调用 NodeService.forceRefresh() 重新加载。
- */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ScrollView } from 'react-native';
+import {
+    View, Text, TextInput, TouchableOpacity, Alert,
+    StyleSheet, ScrollView, Switch, Modal, Platform,
+} from 'react-native';
 import { StorageService } from '../../storage/StorageService';
 import NodeService from '../../node/NodeService';
 import { SOURCE } from '../../config';
 
-/** 播放器类型 */
 type PlayerType = 'builtin' | 'mpv' | 'mdk';
 
-/** 播放器类型选项定义 */
 const PLAYER_OPTIONS: { key: PlayerType; label: string }[] = [
     { key: 'builtin', label: '内置播放器' },
     { key: 'mpv', label: 'MPV' },
     { key: 'mdk', label: 'MDK' },
 ];
 
-/** 默认倍速选项 */
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+
+/** 暗色模式枚举 */
+type DarkModeType = 'system' | 'on' | 'off';
+const DARK_MODE_OPTIONS: { key: DarkModeType; label: string }[] = [
+    { key: 'system', label: '跟随系统' },
+    { key: 'on', label: '开启' },
+    { key: 'off', label: '关闭' },
+];
+
+/** 预定义色彩主题 */
+type ColorThemeKey = 'green' | 'blue' | 'purple' | 'pink' | 'orange' | 'red';
+interface ColorThemeOption {
+    key: ColorThemeKey;
+    label: string;
+    color: string;
+}
+const COLOR_THEME_OPTIONS: ColorThemeOption[] = [
+    { key: 'green', label: '翠绿', color: '#4CAF50' },
+    { key: 'blue', label: '海蓝', color: '#2196F3' },
+    { key: 'purple', label: '紫罗兰', color: '#9C27B0' },
+    { key: 'pink', label: '粉红', color: '#E91E63' },
+    { key: 'orange', label: '橙色', color: '#FF9800' },
+    { key: 'red', label: '赤红', color: '#F44336' },
+];
 
 export default function Settings() {
     const [sourceUrl, setSourceUrl] = useState('');
     const [sourceAuth, setSourceAuth] = useState('');
     const [playerType, setPlayerType] = useState<PlayerType>('builtin');
     const [defaultSpeed, setDefaultSpeed] = useState(1.0);
+    const [darkMode, setDarkMode] = useState<DarkModeType>('system');
+    const [colorTheme, setColorTheme] = useState<ColorThemeKey>('green');
+    const [autoClearCache, setAutoClearCache] = useState(false);
+    const [debugMode, setDebugMode] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    /** 从 StorageService 加载已保存的设置，若无则使用默认值 */
+    /** 弹窗状态 */
+    const [showConfigModal, setShowConfigModal] = useState(false);
+    const [showPlayerModal, setShowPlayerModal] = useState(false);
+    const [showDarkModeModal, setShowDarkModeModal] = useState(false);
+    const [showColorModal, setShowColorModal] = useState(false);
+
+    /** 从 StorageService 加载所有设置 */
     const loadSettings = useCallback(async () => {
         const url = await StorageService.getSetting('sourceUrl');
         const auth = await StorageService.getSetting('sourceAuth');
         const pt = await StorageService.getSetting('playerType');
         const sp = await StorageService.getSetting('defaultSpeed');
+        const dm = await StorageService.getSetting('darkMode');
+        const ct = await StorageService.getSetting('colorTheme');
+        const acc = await StorageService.getSetting('autoClearCache');
+        const dbg = await StorageService.getSetting('debugMode');
+
         setSourceUrl(url || SOURCE.base);
         setSourceAuth(auth || SOURCE.auth);
         setPlayerType(pt || 'builtin');
         setDefaultSpeed(sp ?? 1.0);
+        setDarkMode(dm || 'system');
+        setColorTheme(ct || 'green');
+        setAutoClearCache(acc ?? false);
+        setDebugMode(dbg ?? false);
     }, []);
 
     useEffect(() => { loadSettings(); }, [loadSettings]);
 
-    /** 保存播放源设置并触发 NodeService 强制刷新 */
+    /** 截断显示 URL（保留协议+域名） */
+    const truncateUrl = (url: string) => {
+        if (!url || url.length <= 40) return url || '未配置';
+        try {
+            const u = new URL(url);
+            return u.origin + u.pathname.slice(0, 20) + '…';
+        } catch {
+            return url.slice(0, 40) + '…';
+        }
+    };
+
+    /** 获取当前播放器类型标签 */
+    const getPlayerLabel = () => PLAYER_OPTIONS.find(o => o.key === playerType)?.label || playerType;
+
+    /** 获取当前暗色模式标签 */
+    const getDarkModeLabel = () => DARK_MODE_OPTIONS.find(o => o.key === darkMode)?.label || darkMode;
+
+    /** 获取当前色彩主题对象 */
+    const getCurrentColorTheme = () => COLOR_THEME_OPTIONS.find(o => o.key === colorTheme) || COLOR_THEME_OPTIONS[0];
+
+    /** 保存播放源并强制刷新 */
     const handleSaveAndReload = useCallback(async () => {
         if (!sourceUrl.trim()) {
             Alert.alert('提示', '播放源地址不能为空');
@@ -61,87 +120,687 @@ export default function Settings() {
         }
     }, [sourceUrl, sourceAuth]);
 
-    /** 切换播放器类型并立即持久化 */
+    /** 切换播放器类型 */
     const handlePlayerTypeChange = useCallback(async (type: PlayerType) => {
         setPlayerType(type);
         await StorageService.setSetting('playerType', type);
     }, []);
 
-    /** 切换默认倍速并立即持久化 */
+    /** 切换默认倍速 */
     const handleSpeedChange = useCallback(async (speed: number) => {
         setDefaultSpeed(speed);
         await StorageService.setSetting('defaultSpeed', speed);
     }, []);
 
+    /** 循环切换暗色模式 */
+    const cycleDarkMode = useCallback(async () => {
+        const order: DarkModeType[] = ['system', 'on', 'off'];
+        const idx = order.indexOf(darkMode);
+        const next = order[(idx + 1) % order.length];
+        setDarkMode(next);
+        await StorageService.setSetting('darkMode', next);
+    }, [darkMode]);
+
+    /** 选择暗色模式（弹窗内） */
+    const selectDarkMode = useCallback(async (mode: DarkModeType) => {
+        setDarkMode(mode);
+        await StorageService.setSetting('darkMode', mode);
+        setShowDarkModeModal(false);
+    }, []);
+
+    /** 选择色彩主题 */
+    const selectColorTheme = useCallback(async (key: ColorThemeKey) => {
+        setColorTheme(key);
+        await StorageService.setSetting('colorTheme', key);
+        setShowColorModal(false);
+    }, []);
+
+    /** 切换自动清缓存开关 */
+    const toggleAutoClearCache = useCallback(async (value: boolean) => {
+        setAutoClearCache(value);
+        await StorageService.setSetting('autoClearCache', value);
+    }, []);
+
+    /** 切换调试模式开关 */
+    const toggleDebugMode = useCallback(async (value: boolean) => {
+        setDebugMode(value);
+        await StorageService.setSetting('debugMode', value);
+    }, []);
+
+    /** 清空缓存操作 */
+    const handleClearCache = useCallback(() => {
+        Alert.alert(
+            '确认清空缓存',
+            '将清除所有本地缓存数据，包括已下载的源文件。此操作不可撤销。',
+            [
+                { text: '取消', style: 'cancel' },
+                {
+                    text: '确认',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await NodeService.forceRefresh();
+                            Alert.alert('完成', '缓存已清空');
+                        } catch (e: any) {
+                            Alert.alert('错误', String(e?.message || e));
+                        }
+                    },
+                },
+            ],
+        );
+    }, []);
+
     /** 渲染水平选项芯片组 */
-    const renderChips = <T extends string | number>(options: T[], current: T, onSelect: (v: T) => void, formatLabel: (v: T) => string) => (
-        <View style={styles.chipRow}>
+    const renderChips = <T extends string | number>(
+        options: T[], current: T, onSelect: (v: T) => void, formatLabel: (v: T) => string,
+    ) => (
+        <View style={modalStyles.chipRow}>
             {options.map(opt => {
                 const active = opt === current;
                 return (
-                    <TouchableOpacity key={String(opt)} style={[styles.chip, active && styles.chipActive]} onPress={() => onSelect(opt)}>
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{formatLabel(opt)}</Text>
+                    <TouchableOpacity
+                        key={String(opt)}
+                        style={[modalStyles.chip, active && modalStyles.chipActive]}
+                        onPress={() => onSelect(opt)}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={[modalStyles.chipText, active && modalStyles.chipTextActive]}>
+                            {formatLabel(opt)}
+                        </Text>
                     </TouchableOpacity>
                 );
             })}
         </View>
     );
 
+    /** 渲染设置行组件（带图标、标签、值、箭头） */
+    const renderSettingRow = (
+        icon: string, label: string, value: string | React.ReactNode, onPress?: () => void,
+    ) => (
+        <TouchableOpacity
+            style={styles.settingRow}
+            onPress={onPress}
+            disabled={!onPress}
+            activeOpacity={onPress ? 0.6 : 1}
+        >
+            <View style={styles.rowLeft}>
+                <Text style={styles.rowIcon}>{icon}</Text>
+                <Text style={styles.rowLabel}>{label}</Text>
+            </View>
+            <View style={styles.rowRight}>
+                {typeof value === 'string' ? (
+                    <Text style={styles.rowValue} numberOfLines={1}>{value}</Text>
+                ) : (
+                    value
+                )}
+                {onPress && <Text style={styles.chevron}>›</Text>}
+            </View>
+        </TouchableOpacity>
+    );
+
+    /** 渲染分割线 */
+    const renderDivider = () => <View style={styles.divider} />;
+
+    const themeColor = getCurrentColorTheme().color;
+
     return (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-            {/* 播放源设置 */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>播放源设置</Text>
-                <Text style={styles.label}>Source URL</Text>
-                <TextInput style={styles.input} value={sourceUrl} onChangeText={setSourceUrl} placeholder="输入播放源地址" placeholderTextColor="#5b6072" autoCapitalize="none" autoCorrect={false} keyboardType="url" />
-                <Text style={styles.label}>Source Auth</Text>
-                <TextInput style={styles.input} value={sourceAuth} onChangeText={setSourceAuth} placeholder="输入认证密钥" placeholderTextColor="#5b6072" autoCapitalize="none" autoCorrect={false} secureTextEntry />
-                <TouchableOpacity style={[styles.saveBtn, saving && styles.saveBtnDisabled]} onPress={handleSaveAndReload} disabled={saving}>
-                    <Text style={styles.saveBtnText}>{saving ? '保存中…' : '保存并重新加载'}</Text>
+            {/* ── 配置区域 ── */}
+            <View style={styles.section}>
+                {renderSettingRow(
+                    '⚙️', '配置', truncateUrl(sourceUrl),
+                    () => setShowConfigModal(true),
+                )}
+                {renderDivider()}
+                {renderSettingRow(
+                    '🎬', '播放器', getPlayerLabel(),
+                    () => setShowPlayerModal(true),
+                )}
+                {renderDivider()}
+                {renderSettingRow(
+                    '🌙', '暗色模式', getDarkModeLabel(),
+                    cycleDarkMode,
+                )}
+                {renderDivider()}
+                {renderSettingRow(
+                    '🎨', '色彩',
+                    <View style={styles.colorIndicatorWrap}>
+                        <View style={[styles.colorIndicator, { backgroundColor: themeColor }]} />
+                        <Text style={styles.rowValue}>{getCurrentColorTheme().label}</Text>
+                    </View>,
+                    () => setShowColorModal(true),
+                )}
+            </View>
+
+            {/* ── 功能开关区域 ── */}
+            <View style={styles.section}>
+                <View style={styles.settingRow}>
+                    <View style={styles.rowLeft}>
+                        <Text style={styles.rowIcon}>🗑️</Text>
+                        <Text style={styles.rowLabel}>自动清缓存</Text>
+                    </View>
+                    <Switch
+                        value={autoClearCache}
+                        onValueChange={toggleAutoClearCache}
+                        trackColor={{ false: '#dcdcdc', true: themeColor }}
+                        thumbColor={autoClearCache ? '#fff' : '#fff'}
+                    />
+                </View>
+                {renderDivider()}
+                <View style={styles.settingRow}>
+                    <View style={styles.rowLeft}>
+                        <Text style={styles.rowIcon}>🐛</Text>
+                        <Text style={styles.rowLabel}>调试模式</Text>
+                    </View>
+                    <Switch
+                        value={debugMode}
+                        onValueChange={toggleDebugMode}
+                        trackColor={{ false: '#dcdcdc', true: themeColor }}
+                        thumbColor={debugMode ? '#fff' : '#fff'}
+                    />
+                </View>
+            </View>
+
+            {/* ── 清空缓存按钮 ── */}
+            <View style={styles.clearCacheSection}>
+                <TouchableOpacity style={styles.clearCacheBtn} onPress={handleClearCache} activeOpacity={0.7}>
+                    <Text style={styles.clearCacheBtnText}>清空缓存</Text>
                 </TouchableOpacity>
             </View>
 
-            {/* 播放器设置 */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>播放器设置</Text>
-                <Text style={styles.label}>播放器类型</Text>
-                {renderChips(PLAYER_OPTIONS.map(o => o.key), playerType, handlePlayerTypeChange, k => PLAYER_OPTIONS.find(o => o.key === k)?.label || k)}
-                <Text style={styles.label}>默认倍速</Text>
-                {renderChips(SPEED_OPTIONS, defaultSpeed, handleSpeedChange, v => `${v}x`)}
-            </View>
+            {/* ═══════ 弹窗：配置详情（源地址 + Auth）═══════ */}
+            <Modal visible={showConfigModal} animationType="slide" transparent onRequestClose={() => setShowConfigModal(false)}>
+                <View style={modalStyles.overlay}>
+                    <View style={modalStyles.panel}>
+                        <View style={modalStyles.header}>
+                            <Text style={modalStyles.headerTitle}>配置</Text>
+                            <TouchableOpacity onPress={() => setShowConfigModal(false)} hitSlop={8}>
+                                <Text style={modalStyles.closeBtn}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
 
-            {/* 关于 */}
-            <View style={styles.card}>
-                <Text style={styles.sectionTitle}>关于</Text>
-                <View style={styles.aboutRow}>
-                    <Text style={styles.aboutLabel}>应用版本</Text>
-                    <Text style={styles.aboutValue}>CatPlayer 1.0.0</Text>
+                        <ScrollView style={modalStyles.body} keyboardShouldPersistTiles="handled">
+                            <Text style={modalStyles.fieldLabel}>Source URL</Text>
+                            <TextInput
+                                style={modalStyles.input}
+                                value={sourceUrl}
+                                onChangeText={setSourceUrl}
+                                placeholder="输入播放源地址"
+                                placeholderTextColor="#999"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                keyboardType="url"
+                            />
+
+                            <Text style={modalStyles.fieldLabel}>Source Auth</Text>
+                            <TextInput
+                                style={modalStyles.input}
+                                value={sourceAuth}
+                                onChangeText={setSourceAuth}
+                                placeholder="输入认证密钥"
+                                placeholderTextColor="#999"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                secureTextEntry
+                            />
+                        </ScrollView>
+
+                        <View style={modalStyles.footer}>
+                            <TouchableOpacity
+                                style={[modalStyles.saveBtn, saving && modalStyles.saveBtnDisabled]}
+                                onPress={handleSaveAndReload}
+                                disabled={saving}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={modalStyles.saveBtnText}>
+                                    {saving ? '保存中…' : '保存并重新加载'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 </View>
-                <View style={styles.aboutRow}>
-                    <Text style={styles.aboutLabel}>当前源地址</Text>
-                    <Text style={styles.aboutValue} numberOfLines={1}>{sourceUrl || '未配置'}</Text>
+            </Modal>
+
+            {/* ═══════ 弹窗：播放器设置（类型 + 倍速）═══════ */}
+            <Modal visible={showPlayerModal} animationType="slide" transparent onRequestClose={() => setShowPlayerModal(false)}>
+                <View style={modalStyles.overlay}>
+                    <View style={modalStyles.panel}>
+                        <View style={modalStyles.header}>
+                            <Text style={modalStyles.headerTitle}>播放器设置</Text>
+                            <TouchableOpacity onPress={() => setShowPlayerModal(false)} hitSlop={8}>
+                                <Text style={modalStyles.closeBtn}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={modalStyles.body}>
+                            <Text style={modalStyles.fieldLabel}>播放器类型</Text>
+                            {renderChips(
+                                PLAYER_OPTIONS.map(o => o.key), playerType, handlePlayerTypeChange,
+                                k => PLAYER_OPTIONS.find(o => o.key === k)?.label || k,
+                            )}
+
+                            <Text style={[modalStyles.fieldLabel, { marginTop: 20 }]}>默认倍速</Text>
+                            {renderChips(SPEED_OPTIONS, defaultSpeed, handleSpeedChange, v => `${v}x`)}
+                        </ScrollView>
+                    </View>
                 </View>
-            </View>
+            </Modal>
+
+            {/* ═══════ 弹窗：暗色模式选择 ═══════ */}
+            <Modal visible={showDarkModeModal} animationType="fade" transparent onRequestClose={() => setShowDarkModeModal(false)}>
+                <View style={modalStyles.overlayCentered}>
+                    <View style={modalStyles.pickerPanel}>
+                        <Text style={modalStyles.pickerTitle}>选择暗色模式</Text>
+                        {DARK_MODE_OPTIONS.map(opt => (
+                            <TouchableOpacity
+                                key={opt.key}
+                                style={[
+                                    modalStyles.pickerItem,
+                                    darkMode === opt.key && modalStyles.pickerItemActive,
+                                    { borderLeftColor: themeColor },
+                                ]}
+                                onPress={() => selectDarkMode(opt.key)}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[
+                                    modalStyles.pickerItemText,
+                                    darkMode === opt.key && { color: themeColor, fontWeight: '700' as any },
+                                ]}>
+                                    {opt.label}
+                                </Text>
+                                {darkMode === opt.key && (
+                                    <Text style={[modalStyles.checkMark, { color: themeColor }]}>✓</Text>
+                                )}
+                            </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                            style={modalStyles.pickerCancel}
+                            onPress={() => setShowDarkModeModal(false)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={modalStyles.pickerCancelText}>取消</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* ═══════ 弹窗：色彩主题选择 ═══════ */}
+            <Modal visible={showColorModal} animationType="fade" transparent onRequestClose={() => setShowColorModal(false)}>
+                <View style={modalStyles.overlayCentered}>
+                    <View style={modalStyles.pickerPanel}>
+                        <Text style={modalStyles.pickerTitle}>选择主题色彩</Text>
+                        <View style={modalStyles.colorGrid}>
+                            {COLOR_THEME_OPTIONS.map(opt => (
+                                <TouchableOpacity
+                                    key={opt.key}
+                                    style={[
+                                        modalStyles.colorCircleWrap,
+                                        colorTheme === opt.key && { borderColor: opt.color },
+                                    ]}
+                                    onPress={() => selectColorTheme(opt.key)}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={[modalStyles.colorCircle, { backgroundColor: opt.color }]} />
+                                    {colorTheme === opt.key && (
+                                        <View style={[modalStyles.colorCheckBadge, { backgroundColor: opt.color }]}>
+                                            <Text style={modalStyles.colorCheckIcon}>✓</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                        <View style={modalStyles.selectedColorLabel}>
+                            <View style={[modalStyles.selectedDot, { backgroundColor: themeColor }]} />
+                            <Text style={modalStyles.selectedColorName}>{getCurrentColorTheme().label}</Text>
+                        </View>
+                        <TouchableOpacity
+                            style={modalStyles.pickerCancel}
+                            onPress={() => setShowColorModal(false)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={modalStyles.pickerCancelText}>取消</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </ScrollView>
     );
 }
 
+/* ═════════ 主页面样式 ═════════ */
 const styles = StyleSheet.create({
-    scroll: { flex: 1, backgroundColor: '#0b0b0f' },
-    container: { paddingVertical: 8 },
-    card: { backgroundColor: '#1a1a2e', borderRadius: 12, margin: 12, padding: 16 },
-    sectionTitle: { color: '#cfd2dc', fontSize: 17, fontWeight: '600', marginBottom: 14 },
-    label: { color: '#8a8f9c', fontSize: 13, marginTop: 10, marginBottom: 6 },
-    input: { backgroundColor: '#23232b', color: '#fff', borderRadius: 8, padding: 10, fontSize: 15 },
-    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    chip: { backgroundColor: '#23232b', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, marginRight: 0 },
-    chipActive: { backgroundColor: '#7aa2ff' },
-    chipText: { color: '#cfd2dc', fontSize: 13 },
-    chipTextActive: { color: '#0b0b0f', fontWeight: '600' },
-    saveBtn: { backgroundColor: '#7aa2ff', borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 18 },
-    saveBtnDisabled: { opacity: 0.5 },
-    saveBtnText: { color: '#0b0b0f', fontSize: 15, fontWeight: '600' },
-    aboutRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#23232b' },
-    aboutLabel: { color: '#8a8f9c', fontSize: 14 },
-    aboutValue: { color: '#cfd2dc', fontSize: 14, flex: 1, textAlign: 'right', marginLeft: 12 },
+    scroll: { flex: 1, backgroundColor: '#f5f5f0' },
+    container: { paddingVertical: 16 },
+
+    section: {
+        marginHorizontal: 16,
+        marginBottom: 20,
+        borderRadius: 14,
+        backgroundColor: '#ffffff',
+        overflow: 'hidden',
+        ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 }, android: { elevation: 2 } }),
+    },
+
+    settingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 15,
+        minHeight: 52,
+    },
+
+    rowLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
+    },
+
+    rowIcon: {
+        fontSize: 18,
+        marginRight: 12,
+    },
+
+    rowLabel: {
+        fontSize: 16,
+        color: '#1a1a1a',
+        fontWeight: '500',
+    },
+
+    rowRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        marginLeft: 12,
+    },
+
+    rowValue: {
+        fontSize: 14,
+        color: '#888',
+        textAlign: 'right',
+        flexShrink: 1,
+    },
+
+    chevron: {
+        fontSize: 20,
+        color: '#bbb',
+        marginLeft: 4,
+    },
+
+    divider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: '#eee',
+        marginLeft: 46,
+    },
+
+    colorIndicatorWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    colorIndicator: {
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        marginRight: 8,
+    },
+
+    clearCacheSection: {
+        paddingHorizontal: 16,
+        paddingBottom: 32,
+    },
+
+    clearCacheBtn: {
+        borderWidth: 1.5,
+        borderColor: '#e04444',
+        borderRadius: 10,
+        paddingVertical: 13,
+        alignItems: 'center',
+        backgroundColor: 'transparent',
+    },
+
+    clearCacheBtnText: {
+        color: '#e04444',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+});
+
+/* ═════════ 弹窗样式 ═════════ */
+const modalStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'flex-end',
+    },
+
+    overlayCentered: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    panel: {
+        backgroundColor: '#fff',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        maxHeight: '80%',
+        ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 12 }, android: { elevation: 10 } }),
+    },
+
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#eee',
+    },
+
+    headerTitle: {
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#1a1a1a',
+    },
+
+    closeBtn: {
+        fontSize: 20,
+        color: '#999',
+        paddingHorizontal: 4,
+    },
+
+    body: {
+        padding: 20,
+    },
+
+    fieldLabel: {
+        fontSize: 13,
+        color: '#666',
+        fontWeight: '600',
+        marginBottom: 8,
+        marginTop: 4,
+    },
+
+    input: {
+        backgroundColor: '#f7f7f7',
+        color: '#1a1a1a',
+        borderRadius: 10,
+        padding: 12,
+        fontSize: 15,
+        borderWidth: 1,
+        borderColor: '#eee',
+    },
+
+    footer: {
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: '#eee',
+    },
+
+    saveBtn: {
+        backgroundColor: '#4CAF50',
+        borderRadius: 10,
+        paddingVertical: 13,
+        alignItems: 'center',
+    },
+
+    saveBtnDisabled: { opacity: 0.55 },
+
+    saveBtnText: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+    },
+
+    chip: {
+        backgroundColor: '#f0f0f0',
+        borderRadius: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 9,
+    },
+
+    chipActive: {
+        backgroundColor: '#4CAF50',
+    },
+
+    chipText: {
+        color: '#555',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+
+    chipTextActive: {
+        color: '#fff',
+        fontWeight: '700',
+    },
+
+    /* 选择器面板（居中弹窗） */
+    pickerPanel: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        width: '78%',
+        maxWidth: 300,
+        padding: 20,
+        ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 16 }, android: { elevation: 12 } }),
+    },
+
+    pickerTitle: {
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#1a1a1a',
+        textAlign: 'center',
+        marginBottom: 16,
+    },
+
+    pickerItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 13,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+        borderLeftWidth: 3,
+        borderLeftColor: 'transparent',
+        paddingLeft: 10,
+    },
+
+    pickerItemActive: {
+        backgroundColor: '#fafafa',
+    },
+
+    pickerItemText: {
+        fontSize: 15,
+        color: '#333',
+    },
+
+    checkMark: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
+
+    pickerCancel: {
+        marginTop: 12,
+        paddingVertical: 12,
+        alignItems: 'center',
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: '#eee',
+    },
+
+    pickerCancelText: {
+        fontSize: 15,
+        color: '#999',
+    },
+
+    /* 色彩网格 */
+    colorGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 16,
+        marginBottom: 16,
+    },
+
+    colorCircleWrap: {
+        width: 54,
+        height: 54,
+        borderRadius: 27,
+        borderWidth: 3,
+        borderColor: 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    colorCircle: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+    },
+
+    colorCheckBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+
+    colorCheckIcon: {
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: '800',
+    },
+
+    selectedColorLabel: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+
+    selectedDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginRight: 8,
+    },
+
+    selectedColorName: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#333',
+    },
 });
