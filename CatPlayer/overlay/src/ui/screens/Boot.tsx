@@ -22,6 +22,7 @@ export default function Boot() {
             setLogs(l => [...l, `config keys=[${allKeys}] video.sites=${siteCount}`]);
             nav.replace('Sites', { config });
         } catch (e: any) {
+            setLogs(l => [...l, `getConfig error: ${String(e?.message || e)}`]);
             setErr(String(e?.message || e));
         }
     };
