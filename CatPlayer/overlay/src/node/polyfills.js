@@ -452,30 +452,57 @@ const MODULES = {
     'worker_threads': { parentPort: null, workerData: {}, isMainThread: true, threadId: 0, markAsUncloneable: () => {} },
     'child_process': {},
     'fs/promises': (() => {
+        var _memFs = {};
         function enoent() { const e = new Error('ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
         return {
-            access: (path) => Promise.reject(enoent()),
+            access: (path) => Promise.resolve(undefined),
             readFile: (path, opts) => {
-                if (opts && opts.encoding) return Promise.reject(enoent());
-                return Promise.reject(enoent());
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) {
+                    var val = _memFs[key];
+                    if (opts && opts.encoding === 'utf-8') return Promise.resolve(typeof val === 'string' ? val : '');
+                    return Promise.resolve(val);
+                }
+                if (opts && opts.encoding === 'utf-8') return Promise.resolve('');
+                return Promise.resolve(new Uint8Array(0));
             },
-            writeFile: (path, data, opts) => Promise.resolve(),
+            writeFile: (path, data, opts) => {
+                _memFs[String(path || '')] = data;
+                return Promise.resolve();
+            },
             mkdir: (path, opts) => Promise.resolve(),
-            unlink: (path) => Promise.reject(enoent()),
-            readdir: (path) => Promise.resolve([]),
-            stat: (path) => Promise.reject(enoent()),
-            lstat: (path) => Promise.reject(enoent()),
-            rename: (oldPath, newPath) => Promise.resolve(),
-            copyFile: (src, dest) => Promise.resolve(),
-            rmdir: (path) => Promise.reject(enoent()),
+            unlink: (path) => { delete _memFs[String(path || '')]; return Promise.resolve(); },
+            readdir: (path) => Promise.resolve(Object.keys(_memFs).filter(function(k) { return k.startsWith(String(path || '')); }).map(function(k) { return k.split('/').pop(); })),
+            stat: (path) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) return Promise.resolve({ isFile: () => true, isDirectory: () => false, size: 0, mtime: new Date(), atime: new Date() });
+                var e = enoent(); return Promise.reject(e);
+            },
+            lstat: (path) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) return Promise.resolve({ isFile: () => true, isDirectory: () => false, size: 0, mtime: new Date(), atime: new Date() });
+                var e = enoent(); return Promise.reject(e);
+            },
+            rename: (oldPath, newPath) => { _memFs[String(newPath || '')] = _memFs[String(oldPath || '')]; delete _memFs[String(oldPath || '')]; return Promise.resolve(); },
+            copyFile: (src, dest) => { _memFs[String(dest || '')] = _memFs[String(src || '')]; return Promise.resolve(); },
+            rmdir: (path) => Promise.resolve(),
             chmod: (path, mode) => Promise.resolve(),
-            appendFile: (path, data, opts) => Promise.resolve(),
+            appendFile: (path, data, opts) => {
+                var key = String(path || '');
+                var prev = _memFs[key];
+                _memFs[key] = (prev || '') + (data || '');
+                return Promise.resolve();
+            },
             open: (path, flags, mode) => Promise.reject(enoent()),
             watch: (path, opts) => ({ on: () => {}, close: () => {} }),
-            exists: (path) => Promise.resolve(false),
+            exists: (path) => Promise.resolve(!!_memFs[String(path || '')]),
             readlink: (path) => Promise.reject(enoent()),
             symlink: (target, path, type) => Promise.resolve(),
-            truncate: (path, len) => Promise.resolve(),
+            truncate: (path, len) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) { var s = String(_memFs[key]); _memFs[key] = s.slice(0, len); }
+                return Promise.resolve();
+            },
             utimes: (path, atime, mtime) => Promise.resolve(),
         };
     })(),
