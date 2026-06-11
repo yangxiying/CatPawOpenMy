@@ -410,8 +410,14 @@ function fsPolyfill() {
         },
         mkdirSync: () => {},
         mkdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
-        statSync: () => { throw enoent('ENOENT: no such file or directory, stat'); },
-        stat: (path, cb) => { process.nextTick(() => cb(enoent())); },
+        statSync: (path) => {
+            if (String(path).includes('db.json')) return { size: 0, mode: 0o644, isFile: () => true, isDirectory: () => false };
+            throw enoent('ENOENT: no such file or directory, stat');
+        },
+        stat: (path, cb) => {
+            if (String(path).includes('db.json')) { process.nextTick(() => cb(null, { size: 0, mode: 0o644, isFile: () => true, isDirectory: () => false })); return; }
+            process.nextTick(() => cb(enoent()));
+        },
         readdirSync: () => [],
         openSync: () => -1,
         open: (path, flags, mode, cb) => { if (typeof mode === 'function') { cb = mode; } process.nextTick(() => cb(null, -1)); },
@@ -430,15 +436,27 @@ function fsPolyfill() {
         ftruncateSync: () => {},
         realpathSync: (p) => p,
         access: (path, mode, cb) => { if (typeof mode === 'function') { cb = mode; } if (cb) process.nextTick(cb); },
-        readFile: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(enoent())); },
-        unlink: (path, cb) => { if (cb) process.nextTick(() => cb(enoent())); },
+        readFile: (path, opts, cb) => {
+            if (typeof opts === 'function') { cb = opts; }
+            if (cb) process.nextTick(() => {
+                if (memFs.has(path)) { cb(null, opts === 'utf8' || (opts && opts.encoding === 'utf8') ? memFs.get(path) : Buffer.from(memFs.get(path))); return; }
+                if (String(path).includes('db.json')) { cb(null, '{}'); return; }
+                cb(enoent('ENOENT: no such file or directory, readFile ' + path));
+            });
+        },
+        writeFile: (path, data, opts, cb) => {
+            if (typeof opts === 'function') { cb = opts; }
+            memFs.set(path, typeof data === 'string' ? data : String(data));
+            if (cb) process.nextTick(() => cb(null));
+        },
+        unlink: (path, cb) => { memFs.delete(path); if (cb) process.nextTick(() => cb(null)); },
         unlinkSync: () => {},
         readdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(null, [])); },
         rename: (oldPath, newPath, cb) => { if (cb) process.nextTick(cb); },
         copyFile: (src, dest, cb) => { if (cb) process.nextTick(cb); },
         appendFile: (path, data, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
         watch: (path, opts, cb) => ({ on: () => {}, close: () => {} }),
-        exists: (path, cb) => { if (cb) process.nextTick(() => cb(false)); },
+        exists: (path, cb) => { if (cb) process.nextTick(() => cb(memFs.has(path) || String(path).includes('db.json'))); },
         promises: undefined,
     };
 }
