@@ -39,7 +39,7 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
     const wvRef = useRef<WebView>(null);
     const readyRef = useRef(false);
     const readyHandledRef = useRef(false);
-    const isWebsite = bundleCode.includes('globalThis.websiteBundle');
+    const isWebsite = bundleCode.trimStart().startsWith('globalThis.websiteBundle');
 
     const postToWv = useCallback((msg: string) => {
         wvRef.current?.postMessage(msg);
@@ -236,17 +236,21 @@ try {
                         const respBody = await resp.text();
                         const respHeaders: Record<string, string> = {};
                         resp.headers.forEach((v: string, k: string) => { respHeaders[k] = v; });
+                        const pid = msg.proxyId || msg.reqId;
                         wvRef.current?.injectJavaScript(`
 (() => {
-    const p = window.__PENDING_REQUESTS.get(${msg.reqId});
-    if (p) { p.resolve({ statusCode: ${resp.status}, headers: ${JSON.stringify(respHeaders)}, body: ${JSON.stringify(respBody)} }); window.__PENDING_REQUESTS.delete(${msg.reqId}); }
+    var p = window.__PROXY && window.__PROXY.pending && window.__PROXY.pending[${JSON.stringify(pid)}];
+    if (!p) p = window.__PENDING_REQUESTS && window.__PENDING_REQUESTS.get(${msg.reqId});
+    if (p) { p.resolve(${JSON.stringify(respBody)}); if(window.__PROXY&&window.__PROXY.pending) delete window.__PROXY.pending[${JSON.stringify(pid)}]; }
 })();
 `);
                     } catch (e: any) {
+                        const pid = msg.proxyId || msg.reqId;
                         wvRef.current?.injectJavaScript(`
 (() => {
-    const p = window.__PENDING_REQUESTS.get(${msg.reqId});
-    if (p) { p.reject(new Error(${JSON.stringify(String(e))})); window.__PENDING_REQUESTS.delete(${msg.reqId}); }
+    var p = window.__PROXY && window.__PROXY.pending && window.__PROXY.pending[${JSON.stringify(pid)}];
+    if (!p) p = window.__PENDING_REQUESTS && window.__PENDING_REQUESTS.get(${msg.reqId});
+    if (p) { p.reject(new Error(${JSON.stringify(String(e))})); if(window.__PROXY&&window.__PROXY.pending) delete window.__PROXY.pending[${JSON.stringify(pid)}]; }
 })();
 `);
                     }

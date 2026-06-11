@@ -10,7 +10,7 @@ export default function Boot() {
     const [err, setErr] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
-    const [showGo, setShowGo] = useState<{config: CatConfig}|null>(null);
+    const [showGo, setShowGo] = useState<{config: CatConfig|null}|null>(null);
 
     const go = async () => {
         if (NodeService.isWebsiteSource) return;
@@ -39,10 +39,10 @@ export default function Boot() {
         }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
-            // 网站源：WebView 全屏渲染，Boot 不需要 /config，直接标记 ready
+            // 网站源：不自动跳转，等用户点「进入」
             if (NodeService.isWebsiteSource) {
-                setLogs(l => [...l, '网站源检测到，跳过 /config']);
-                NodeService.markReady();
+                setLogs(l => [...l, '网站源已就绪，点击进入浏览']);
+                setShowGo({config: null});
                 return;
             }
             go();
