@@ -107,11 +107,6 @@ try {
     __fn(__req, __m, __m.exports, '/main.js', '/');
     _log('outer bundle executed');
 
-    // 网站源只渲染 WebView UI，不启动 Fastify 服务
-    // 发送 port 消息让 RN 端 waitForReady() 继续
-    window.ReactNativeWebView?.postMessage(JSON.stringify({type:'port',port:0}));
-    _log('website mode: sent port=0');
-
     if (typeof globalThis.websiteBundle === 'undefined') {
         throw new Error('not a website source');
     }
@@ -129,6 +124,10 @@ try {
     } else {
         _log('no renderClient, keys=' + (ws ? Object.keys(ws).join(',') : 'null'));
     }
+
+    // port=0 必须在 renderClient 之后发送，否则 Boot 会提前跳转导致白屏
+    window.ReactNativeWebView?.postMessage(JSON.stringify({type:'port',port:0}));
+    _log('website mode: sent port=0');
 } catch(e) {
     _log('WEBSITE ERROR: ' + (e && e.stack ? e.stack : String(e)));
     window.ReactNativeWebView?.postMessage(JSON.stringify({type:'error',error:'website: '+String(e)}));
