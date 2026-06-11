@@ -387,10 +387,10 @@ export default function Settings() {
 
             {/* ═══════ 弹窗：添加/编辑播放源 ═══════ */}
             <Modal visible={showSourceModal} animationType="slide" transparent onRequestClose={() => setShowSourceModal(false)}>
-                <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <View style={modalStyles.overlay}>
                         <View style={[modalStyles.panel, { maxHeight: '60%' }]}>
-                        <View style={modalStyles.header}>
+                            <View style={modalStyles.header}>
                             <Text style={modalStyles.headerTitle}>{editingSource ? '编辑源' : '添加源'}</Text>
                             <TouchableOpacity onPress={() => setShowSourceModal(false)} hitSlop={8}>
                                 <Text style={modalStyles.closeBtn}>✕</Text>
@@ -436,6 +436,7 @@ export default function Settings() {
                                     {saving ? '保存中…' : '保存'}
                                 </Text>
                             </TouchableOpacity>
+                        </View>
                         </View>
                     </View>
                 </KeyboardAvoidingView>
