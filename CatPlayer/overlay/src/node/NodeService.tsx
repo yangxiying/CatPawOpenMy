@@ -322,7 +322,7 @@ class NodeServiceImpl {
                 }
 
                 this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
-                const isWeb = this.bundleCode.includes('globalThis.websiteBundle') && !this.bundleCode.includes('catServerFactory');
+                const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
                 this.setIsWebsiteSource(isWeb);
                 this.log(`remote bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), website=${isWeb}`);
 

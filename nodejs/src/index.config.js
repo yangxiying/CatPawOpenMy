@@ -18,18 +18,6 @@ export default {
             server: 'https://ali.liucn.repl.co',
         },
     ],
-    pans: {
-        list: [
-            {
-                name: '🐉神族九帝',
-                server: 'https://alist.shenzjd.com',
-            },
-            {
-                name: '💢repl',
-                server: 'https://ali.liucn.repl.co',
-            },
-        ],
-    },
     color: [
         {
             light: {
