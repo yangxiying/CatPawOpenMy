@@ -53,7 +53,7 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
     // 构建 HTML
     const html = useMemo(() => {
         if (isWebsite) {
-            return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/><style>html,body,#app{margin:0;padding:0;width:100%;height:100%}#root,#www{display:none}</style>${CDN_SCRIPTS}</head><body><div id="root"></div><div id="app"></div><div id="www"></div><script>
+            return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/><style>html,body,#root,#app{margin:0;padding:0;width:100%;height:100%}#www{display:none}</style>${CDN_SCRIPTS}</head><body><div id="root"></div><div id="app"></div><div id="www"></div><script>
 (function(){
 var _log=function(m){try{window.ReactNativeWebView.postMessage(JSON.stringify({type:'log',msg:m}))}catch(e){}};
 function check(){
