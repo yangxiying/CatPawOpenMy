@@ -395,11 +395,19 @@ function cryptoPolyfill() {
 // 7. fs polyfill (最小化)
 // ============================================================
 function fsPolyfill() {
+    const memFs = new Map(); // 内存文件系统
     function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
     return {
-        existsSync: () => false,
-        readFileSync: () => { throw enoent('ENOENT: no such file or directory, read'); },
-        writeFileSync: () => {},
+        existsSync: (path) => memFs.has(path),
+        readFileSync: (path, enc) => {
+            if (memFs.has(path)) return enc === 'utf8' ? memFs.get(path) : Buffer.from(memFs.get(path));
+            // 数据库文件：返回空 JSON
+            if (String(path).includes('db.json')) return '{}';
+            throw enoent('ENOENT: no such file or directory, read ' + path);
+        },
+        writeFileSync: (path, data, enc) => {
+            memFs.set(path, enc === 'utf8' ? data : String(data));
+        },
         mkdirSync: () => {},
         mkdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
         statSync: () => { throw enoent('ENOENT: no such file or directory, stat'); },
@@ -709,6 +717,31 @@ _log('globals injected');
 
 console.log('[polyfill] Node.js polyfills loaded (WebView)');
 try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: 'polyfill env ready' })); } catch {}
+
+// 拦截 fetch 请求：将 API 请求代理到远程后端
+(function() {
+    var _origFetch = window.fetch;
+    window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        // API 请求匹配：/spider/、/config、/check
+        if (url && (url.indexOf('/spider/') >= 0 || url === '/config' || url.indexOf('/config?') >= 0 || url === '/check' || url.indexOf('/check?') >= 0)) {
+            var msgId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            return new Promise(function(resolve, reject) {
+                window.__PROXY.pending[msgId] = { resolve: resolve, reject: reject };
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'proxyRequest',
+                    proxyId: msgId,
+                    method: (init && init.method) || 'GET',
+                    url: url,
+                    headers: (init && init.headers) || {},
+                    body: (init && init.body) || null,
+                }));
+            });
+        }
+        return _origFetch.apply(this, arguments);
+    };
+    window.__PROXY = { pending: {} };
+})();
 
 // 通知 RN polyfill 已就绪，可以注入 bundle
 try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {
