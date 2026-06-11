@@ -398,7 +398,7 @@ function fsPolyfill() {
     const memFs = new Map(); // 内存文件系统
     function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
     return {
-        existsSync: (path) => memFs.has(path),
+        existsSync: (path) => memFs.has(path) || String(path).includes('db.json'),
         readFileSync: (path, enc) => {
             if (memFs.has(path)) return enc === 'utf8' ? memFs.get(path) : Buffer.from(memFs.get(path));
             // 数据库文件：返回空 JSON
