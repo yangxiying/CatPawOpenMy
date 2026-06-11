@@ -65,6 +65,21 @@ Spider `test` route does self-test: calls its own routes via `inReq.server.injec
 3. User browses: `POST /spider/<key>/<type>/home` → spider scrapes upstream API
 4. User plays: `POST /spider/<key>/<type>/play` → spider resolves play URL (may chain through parser/ALI auth)
 
+### Source system
+
+CatPaw supports two kinds of sources:
+
+- **Embedded spiders** (`src/spider/`): built-in, configured via `src/index.config.js` (alist servers, video URLs, color themes)
+- **Remote sources**: user provides a URL pointing to a JS bundle (e.g. `http://user:pass@host/index.js.md5`). CatPlayer downloads and executes it independently — no `index.config.js` needed
+
+Remote source URLs may 302-redirect to a CDN (e.g. NetEase NOS). The app follows redirects, downloads the bundle, verifies MD5, caches to `Documents/catplayer/`, and executes in WebView.
+
+Remote bundles come in two flavors:
+- **Website source**: exports `globalThis.websiteBundle` → rendered as full WebView UI (React/antd frontend)
+- **Server source**: no `websiteBundle` → runs Fastify in WebView, API via postMessage bridge
+
+Some bundles are **hybrid** (contain both `websiteBundle` and `catServerFactory`). CatPlayer detects these as website sources — `isWeb` checks for `globalThis.websiteBundle` presence regardless of `catServerFactory`.
+
 ### JSON DB
 
 `node-json-db` persisted at `$NODE_PATH/db.json`. Used for device fingerprints and other persistent state. Cleared when app cache is cleared.

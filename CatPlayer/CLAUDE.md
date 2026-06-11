@@ -33,7 +33,7 @@ cd CatPlayer
 
 ### 核心架构：WebView + Node Polyfill 桥
 
-源 bundle（4.47MB CJS，由 esbuild 打包的 fastify+axios+http 服务）**无法直接在 iOS 上运行**（无 Node.js 运行时），改为在隐藏 WebView 中执行：
+源 bundle（CJS，由 esbuild 打包的 fastify+axios+http 服务）**无法直接在 iOS 上运行**（无 Node.js 运行时），改为在隐藏 WebView 中执行：
 
 ```
 React Native (UI + CatApi)
@@ -49,6 +49,24 @@ WebView (隐藏，运行 Node.js 源 bundle)
 1. RN `CatApi.get/post()` → `NodeService.request()` → `bridge.sendRequest()` → `postMessage` 到 WebView
 2. WebView 内：polyfill `http.createServer` 拦截 → 调用 bundle 注册的 fastify handler
 3. handler 处理请求 → `res.end()` → `postMessage` 回 RN → bridge 匹配 reqId → resolve Promise
+
+### 源类型检测
+
+NodeService/WebViewNode 根据 bundle 内容判断源类型：
+
+- **网站源**（`isWeb=true`）：bundle 含 `globalThis.websiteBundle` → 全屏 WebView 渲染 React/antd 前端 UI，API 通过 WebView proxy 转发
+- **服务源**（`isWeb=false`）：无 `websiteBundle` → 隐藏 WebView 运行 Fastify，API 通过 postMessage 桥
+
+检测规则：`isWeb = bundleCode.includes('globalThis.websiteBundle')`。即使 bundle 同时含 `catServerFactory`（混合 bundle），只要有 `websiteBundle` 就当网站源处理。
+
+### 远程源加载流程
+
+1. 从 `StorageService` 读取用户配置的源 URL（含 Basic auth `user:pass@host`）
+2. 下载 `index.js.md5` → 本地缓存 MD5 比对 → 不匹配则下载 `index.js` bundle
+3. 检测源类型 → 设置 `isWebsiteSource` → 触发 WebView 渲染
+4. 网站源：保存远程 URL 供 WebView 直接加载；服务源：注入 polyfill + bundle 代码
+
+远程 URL 可能 302 重定向到 CDN（如 NetEase NOS），下载逻辑跟随重定向。
 
 ### 关键文件
 
