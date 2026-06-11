@@ -39,7 +39,7 @@ const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode,
     const wvRef = useRef<WebView>(null);
     const readyRef = useRef(false);
     const readyHandledRef = useRef(false);
-    const isWebsite = bundleCode.trimStart().startsWith('globalThis.websiteBundle');
+    const isWebsite = bundleCode.includes('globalThis.websiteBundle') && !bundleCode.includes('catServerFactory');
 
     const postToWv = useCallback((msg: string) => {
         wvRef.current?.postMessage(msg);
