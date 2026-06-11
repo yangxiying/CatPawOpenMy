@@ -473,7 +473,24 @@ const MODULES = {
     'child_process': {},
     'fs/promises': (() => {
         var _memFs = {};
-        function enoent() { const e = new Error('ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+        function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+        function makeFd(path) {
+            var fd = {
+                _path: path,
+                _buf: '',
+                writeFile: function(data, opts) {
+                    _memFs[String(path)] = typeof data === 'string' ? data : String(data);
+                    return Promise.resolve();
+                },
+                write: function(buffer, offset, len, position) {
+                    fd._buf += typeof buffer === 'string' ? buffer : '';
+                    return Promise.resolve();
+                },
+                sync: function() { return Promise.resolve(); },
+                close: function() { return Promise.resolve(); },
+            };
+            return fd;
+        }
         return {
             access: (path) => Promise.resolve(undefined),
             readFile: (path, opts) => {
@@ -483,8 +500,8 @@ const MODULES = {
                     if (opts && opts.encoding === 'utf-8') return Promise.resolve(typeof val === 'string' ? val : '');
                     return Promise.resolve(val);
                 }
-                if (opts && opts.encoding === 'utf-8') return Promise.resolve('');
-                return Promise.resolve(new Uint8Array(0));
+                // 文件不存在必须 reject ENOENT，node-json-db FileAdapter 依赖此信号
+                return Promise.reject(enoent('ENOENT: no such file or directory, read ' + path));
             },
             writeFile: (path, data, opts) => {
                 _memFs[String(path || '')] = data;
@@ -513,7 +530,19 @@ const MODULES = {
                 _memFs[key] = (prev || '') + (data || '');
                 return Promise.resolve();
             },
-            open: (path, flags, mode) => Promise.reject(enoent()),
+            open: (path, flags, mode) => {
+                // 'w' 模式：创建/截断文件，返回可写 fd
+                var key = String(path || '');
+                if (typeof flags === 'string' && flags.indexOf('w') >= 0) {
+                    _memFs[key] = '';
+                    return Promise.resolve(makeFd(key));
+                }
+                // 'r' 模式：文件存在则返回 fd 供 stat/fstat 等，不存在则 reject
+                if (_memFs.hasOwnProperty(key)) {
+                    return Promise.resolve(makeFd(key));
+                }
+                return Promise.reject(enoent('ENOENT: no such file or directory, open ' + path));
+            },
             watch: (path, opts) => ({ on: () => {}, close: () => {} }),
             exists: (path) => Promise.resolve(!!_memFs[String(path || '')]),
             readlink: (path) => Promise.reject(enoent()),
