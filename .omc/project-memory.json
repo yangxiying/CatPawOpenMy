@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1781087644519,
+  "lastScanned": 1781244297923,
   "projectRoot": "/Users/yangxiying/Documents/data/my-project/CatPawOpenMy",
   "techStack": {
     "languages": [],
@@ -9,7 +9,7 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "rtk tsc --noEmit CatPlayer/overlay/src/player/VideoPlayer.tsx 2>&1 | head -20",
+    "buildCommand": null,
     "testCommand": null,
     "lintCommand": null,
     "devCommand": null,
@@ -36,7 +36,7 @@
       "path": "CatPlayer",
       "purpose": null,
       "fileCount": 7,
-      "lastAccessed": 1781087644499,
+      "lastAccessed": 1781244297899,
       "keyFiles": [
         "CLAUDE.md",
         "README.md",
@@ -49,7 +49,7 @@
       "path": "nodejs",
       "purpose": null,
       "fileCount": 12,
-      "lastAccessed": 1781087644500,
+      "lastAccessed": 1781244297900,
       "keyFiles": [
         "babel.config.cjs",
         "esbuild-config.js",
@@ -62,7 +62,7 @@
       "path": "CatPlayer/app",
       "purpose": "Application code",
       "fileCount": 16,
-      "lastAccessed": 1781087644501,
+      "lastAccessed": 1781244297901,
       "keyFiles": [
         "App.tsx",
         "Gemfile",
@@ -73,7 +73,7 @@
       "path": "CatPlayer/scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 2,
-      "lastAccessed": 1781087644504,
+      "lastAccessed": 1781244297902,
       "keyFiles": [
         "inline-polyfill.mjs",
         "inline-spider-bundle.mjs"
@@ -83,7 +83,7 @@
       "path": "nodejs/dist",
       "purpose": "Distribution/build output",
       "fileCount": 4,
-      "lastAccessed": 1781087644505,
+      "lastAccessed": 1781244297906,
       "keyFiles": [
         "index.config.js",
         "index.config.js.md5",
@@ -94,131 +94,10 @@
       "path": "nodejs/node_modules",
       "purpose": "Dependencies",
       "fileCount": 1,
-      "lastAccessed": 1781087644507,
+      "lastAccessed": 1781244297910,
       "keyFiles": []
     }
   },
-  "hotPaths": [
-    {
-      "path": "CatPlayer/overlay/src/ui/screens/Settings.tsx",
-      "accessCount": 32,
-      "lastAccessed": 1781140709383,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/node/NodeService.tsx",
-      "accessCount": 26,
-      "lastAccessed": 1781153859400,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/ui/screens/Boot.tsx",
-      "accessCount": 23,
-      "lastAccessed": 1781152762100,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/player/VideoPlayer.tsx",
-      "accessCount": 20,
-      "lastAccessed": 1781099264502,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/node/polyfills.js",
-      "accessCount": 14,
-      "lastAccessed": 1781158619576,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/node/WebViewNode.tsx",
-      "accessCount": 12,
-      "lastAccessed": 1781153860394,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/storage/StorageService.ts",
-      "accessCount": 8,
-      "lastAccessed": 1781111883705,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/ui/App.tsx",
-      "accessCount": 6,
-      "lastAccessed": 1781144138011,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/setup.sh",
-      "accessCount": 3,
-      "lastAccessed": 1781098198699,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/api/CatApi.ts",
-      "accessCount": 3,
-      "lastAccessed": 1781148404723,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/app/ios/CatPlayer/PlayerModules.m",
-      "accessCount": 2,
-      "lastAccessed": 1781097995807,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/config.ts",
-      "accessCount": 1,
-      "lastAccessed": 1781088496621,
-      "type": "file"
-    },
-    {
-      "path": "nodejs/src/router.js",
-      "accessCount": 1,
-      "lastAccessed": 1781089141954,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/node/bridge.ts",
-      "accessCount": 1,
-      "lastAccessed": 1781089152787,
-      "type": "file"
-    },
-    {
-      "path": "nodejs/src/index.js",
-      "accessCount": 1,
-      "lastAccessed": 1781089220670,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/app/ios/CatPlayer/MPVPlayerModule.swift",
-      "accessCount": 1,
-      "lastAccessed": 1781097866177,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/app/ios/CatPlayer/MDKPlayerModule.swift",
-      "accessCount": 1,
-      "lastAccessed": 1781097885642,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/app/ios/CatPlayer/MPVPlayerViewManager.swift",
-      "accessCount": 1,
-      "lastAccessed": 1781097935493,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/app/ios/CatPlayer/MDKPlayerViewManager.swift",
-      "accessCount": 1,
-      "lastAccessed": 1781097979571,
-      "type": "file"
-    },
-    {
-      "path": "CatPlayer/overlay/src/ui/screens/Sites.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1781148404474,
-      "type": "file"
-    }
-  ],
+  "hotPaths": [],
   "userDirectives": []
 }

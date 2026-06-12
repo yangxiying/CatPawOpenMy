@@ -84,7 +84,7 @@ export type SourceItem = {
 const DEFAULT_SOURCE: SourceItem = {
     id: 'default',
     name: '默认源',
-    url: 'http://wexfnw:wexfnw@cat.xn--4kq62z5rby2qupq9ub.top/index.js.md5',
+    url: 'http://wexfnw:wexfnw@cat.999888123.xyz/index.js.md5',
     isActive: true,
 };
 

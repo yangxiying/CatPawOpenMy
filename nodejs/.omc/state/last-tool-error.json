@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"rtk find /Users/yangxiying/Documents/data/my-project/CatPawOpenMy/.github -name \\\"*.yml\\\" -o -name \\\"*.yaml\\\" 2>/dev/null\",\"description\":\"Find GitHub Actions workflow files\"}",
+  "error": "Exit code 1\nCommand output was lost: the temp filesystem at /private/tmp/claude-501/-Users-yangxiying-Documents-data-my-project-CatPawOpenMy/29b86f19-3b17-4593-99da-cbebf368b533/tasks is full (0MB free). The child process's stdout/stderr writes failed with ENOSPC. Free up space or set CLAUDE_CODE_TMPDIR to a directory on a filesystem with room.",
+  "timestamp": "2026-06-11T07:19:14.029Z",
+  "retry_count": 2
+}

@@ -51,21 +51,11 @@ export default async function router(fastify) {
                  */
                 async function (_request, reply) {
                     const config = {
-                        video: {
-                            sites: [],
-                        },
-                        read: {
-                            sites: [],
-                        },
-                        comic: {
-                            sites: [],
-                        },
-                        music: {
-                            sites: [],
-                        },
-                        pan: {
-                            sites: [],
-                        },
+                        video: { sites: [] },
+                        read: { sites: [] },
+                        comic: { sites: [] },
+                        music: { sites: [] },
+                        pan: { sites: [] },
                         color: fastify.config.color || [],
                     };
                     spiders.forEach((spider) => {
