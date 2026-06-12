@@ -24,15 +24,14 @@ interface Props {
     onPlay?: (url: string, title?: string) => void;
 }
 
-// 网站源依赖的 CDN 库（与 websiteBundle 内引用的版本一致）
-// baomitu CDN 已失效（404），改用 unpkg
+// 网站源依赖的 CDN 库（使用 jsdelivr.cn 国内可达）
 const CDN_SCRIPTS = `
-<link rel="stylesheet" href="https://unpkg.com/antd@5.23.3/dist/reset.css" />
-<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/dayjs@1.10.8/dayjs.min.js"></script>
-<script src="https://unpkg.com/axios@0.26.0/dist/axios.min.js"></script>
-<script src="https://unpkg.com/antd@5.23.3/dist/antd.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/antd@5.23.3/dist/reset.css" />
+<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dayjs@1.10.8/dayjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios@0.26.0/dist/axios.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/antd@5.23.3/dist/antd.min.js"></script>
 `;
 
 const WebViewNode = forwardRef<WebViewNodeRef, Props>(({ bundleCode, configCode, polyfillCode, onReady, onError, onLog, visible, onPlay }, ref) => {

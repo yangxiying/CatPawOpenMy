@@ -4,7 +4,6 @@
  */
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { WebView } from 'react-native-webview';
 import WebViewNode, { WebViewNodeRef } from './WebViewNode';
 import { BridgeRequest, BridgeResponse, rejectAll } from './bridge';
 import { SOURCE } from '../config';
@@ -330,6 +329,8 @@ class NodeServiceImpl {
                 if (isWeb) {
                     this.remoteSourceUrl = baseNoMd5;
                     this.log(`website source URL: ${this.remoteSourceUrl}`);
+                    // 网站源不需要 Fastify bridge，直接就绪
+                    this.markReady();
                 }
 
                 this.renderTrigger?.();
@@ -467,7 +468,6 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
     const [err, setErr] = useState<string | null>(null);
     const [, forceRender] = useState(0);
     const wvRef = useRef<WebViewNodeRef>(null);
-    const webWvRef = useRef<WebView>(null);
 
     const setWvRef = useCallback((ref: WebViewNodeRef | null) => {
         wvRef.current = ref;
@@ -500,44 +500,6 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
         nodeService.triggerPlay(url, title);
     }, []);
 
-    // 网站源：直接加载远程 URL（全屏可见 WebView）
-    if (nodeService.isWebsiteSource && nodeService.remoteSourceUrl) {
-        return (
-            <View style={forcedVisible ? styles.visible : styles.hidden}>
-                <WebView
-                    ref={webWvRef}
-                    source={{ uri: nodeService.remoteSourceUrl }}
-                    style={styles.webview}
-                    originWhitelist={['*']}
-                    javaScriptEnabled
-                    allowFileAccess
-                    allowUniversalAccessFromFileURLs
-                    mixedContentMode="always"
-                    cacheEnabled={true}
-                    allowFileAccessFromFileURLs
-                    scrollEnabled
-                    bounces
-                    onLoadEnd={() => {
-                        // 注入播放桥接：拦截播放请求发送给 RN
-                        webWvRef.current?.injectJavaScript(`
-(function(){
-  window.addEventListener('message', function(e) {
-    try {
-      var d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (d && d.type === 'play') {
-        window.ReactNativeWebView.postMessage(JSON.stringify(d));
-      }
-    } catch {}
-  });
-})();
-true;
-                        `);
-                    }}
-                />
-            </View>
-        );
-    }
-
     const code = nodeService.getBundleCode();
     if (!code) { return null; }
 
@@ -560,5 +522,4 @@ true;
 const styles = StyleSheet.create({
     hidden: { position: 'absolute', width: 1, height: 1, opacity: 0, top: -9999 },
     visible: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
-    webview: { flex: 1, width: '100%', height: '100%' },
 });
