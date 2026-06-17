@@ -286,6 +286,7 @@ class NodeServiceImpl {
                 const baseNoMd5 = remoteUrl.replace(/\/index\.js\.md5$/, '').replace(/\/index\.md5$/, '');
                 const md5Url = baseNoMd5 + '/index.js.md5';
                 const jsUrl = baseNoMd5 + '/index.js';
+                const cfgPath = `${dir}/remote_index.config.js`;
 
                 // 获取 auth header
                 let authHeader = '';
@@ -315,6 +316,7 @@ class NodeServiceImpl {
                 if (cachedMd5 !== wantMd5 || !localOk) {
                     this.log('downloading remote bundle…');
                     await RNFS.downloadFile({ fromUrl: jsUrl, toFile: idxPath, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+                    await RNFS.downloadFile({ fromUrl: baseNoMd5 + '/index.config.js', toFile: cfgPath, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
                     await RNFS.writeFile(`${dir}/.remote_md5`, wantMd5, 'utf8');
                 } else {
                     this.log('cache hit');
