@@ -323,6 +323,8 @@ class NodeServiceImpl {
                 }
 
                 this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
+                this.configCode = await RNFS.readFile(cfgPath, 'utf8');
+                this.log(`config file loaded: ${(this.configCode.length / 1024).toFixed(0)} KB`);
                 const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
                 this.setIsWebsiteSource(isWeb);
                 this.log(`remote bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), website=${isWeb}`);
