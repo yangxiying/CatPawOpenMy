@@ -37,6 +37,7 @@ async function home(_inReq, _outResp) {
             return categories.indexOf(a.type_name) - categories.indexOf(b.type_name);
         });
     }
+    let list = [];
     if (data.list) {
         const likes = await request(url + `?ac=detail&ids=${data.list.map((v) => v.vod_id).join(',')}`);
         for (const vod of likes.list) {
@@ -46,10 +47,17 @@ async function home(_inReq, _outResp) {
                 vod_pic: vod.vod_pic,
                 vod_remarks: vod.vod_remarks,
             });
+            list.push({
+                vod_id: vod.vod_id.toString(),
+                vod_name: vod.vod_name.toString(),
+                vod_pic: vod.vod_pic,
+                vod_remarks: vod.vod_remarks,
+            });
         }
     }
     return {
         class: classes,
+        list: list,
     };
 }
 

@@ -21,10 +21,24 @@ export default function Boot() {
         try {
             await NodeService.getBaseUrl();
             const config = await CatApi.getConfig();
-            const siteCount = config?.video?.sites?.length ?? 0;
             const allKeys = config ? Object.keys(config) : [];
-            console.log('[Boot] config keys:', allKeys, 'video.sites:', siteCount);
-            setLogs(l => [...l, `config keys=[${allKeys}] video.sites=${siteCount}`]);
+            console.log('[Boot] config keys:', allKeys);
+            setLogs(l => [...l, `config keys=[${allKeys}]`]);
+            const categories = ['video', 'read', 'comic', 'music', 'pan'];
+            for (const cat of categories) {
+                const sites = (config as any)?.[cat]?.sites || [];
+                if (sites.length > 0) {
+                    setLogs(l => [...l, `【${cat}】${sites.length} 个站点:`]);
+                    sites.forEach((site: any, idx: number) => {
+                        const name = site.name || '未命名';
+                        const key = site.key || '';
+                        const api = site.api || '';
+                        setLogs(l => [...l, `  ${idx + 1}. ${name} (${key})`]);
+                        if (api) setLogs(l => [...l, `     API: ${api}`]);
+                    });
+                }
+            }
+            
             configRef.current = config;
             setShowGo({config});
         } catch (e: any) {
@@ -43,10 +57,33 @@ export default function Boot() {
         const timeout = setTimeout(() => {
             setErr('等待超时（60s）— WebView 未就绪');
         }, 60000);
-        NodeService.waitForReady().then(() => {
+        NodeService.waitForReady().then(async () => {
             clearTimeout(timeout);
-            // 显示「进入」按钮，不自动跳转，用户点按钮才执行 go() + 跳转
-            setLogs(l => [...l, '服务已就绪，点击「进入」继续']);
+            setLogs(l => [...l, '服务已就绪，正在解析站点…']);
+            try {
+                await NodeService.getBaseUrl();
+                const config = await CatApi.getConfig();
+                const allKeys = config ? Object.keys(config) : [];
+                setLogs(l => [...l, `config keys=[${allKeys}]`]);
+                const categories = ['video', 'read', 'comic', 'music', 'pan'];
+                for (const cat of categories) {
+                    const sites = (config as any)?.[cat]?.sites || [];
+                    if (sites.length > 0) {
+                        setLogs(l => [...l, `【${cat}】${sites.length} 个站点:`]);
+                        sites.forEach((site: any, idx: number) => {
+                            const name = site.name || '未命名';
+                            const key = site.key || '';
+                            const api = site.api || '';
+                            setLogs(l => [...l, `  ${idx + 1}. ${name} (${key})`]);
+                            if (api) setLogs(l => [...l, `     API: ${api}`]);
+                        });
+                    }
+                }
+                configRef.current = config;
+                setLogs(l => [...l, '点击「进入」继续']);
+            } catch (e: any) {
+                setLogs(l => [...l, `解析失败: ${String(e?.message || e)}`]);
+            }
             setShowGo({config: null});
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
         return () => { offLog(); offErr(); clearTimeout(timeout); };

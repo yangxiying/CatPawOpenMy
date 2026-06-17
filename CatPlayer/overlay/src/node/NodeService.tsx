@@ -325,8 +325,7 @@ class NodeServiceImpl {
                 this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
                 this.configCode = await RNFS.readFile(cfgPath, 'utf8');
                 this.log(`config file loaded: ${(this.configCode.length / 1024).toFixed(0)} KB`);
-                const isWeb = this.bundleCode.includes('globalThis.websiteBundle')
-                    && !this.bundleCode.includes('catServerFactory');
+                const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
                 this.setIsWebsiteSource(isWeb);
                 this.log(`remote bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), website=${isWeb}`);
 
@@ -414,7 +413,7 @@ class NodeServiceImpl {
             }
             this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
             this.configCode = await RNFS.readFile(`${dir}/index.config.js`, 'utf8');
-            const isWeb = this.bundleCode.includes('globalThis.websiteBundle') && !this.bundleCode.includes('catServerFactory');
+            const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
             this.setIsWebsiteSource(isWeb);
             this.log(`bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
             if (isWeb) this.log('  类型: 网站源（website source）');

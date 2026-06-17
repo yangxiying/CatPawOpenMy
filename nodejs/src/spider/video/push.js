@@ -2,6 +2,13 @@ async function init(_inReq, _outResp) {
     return {};
 }
 
+async function home(_inReq, _outResp) {
+    return {
+        class: [],
+        list: [],
+    };
+}
+
 async function support(_inReq, _outResp) {
     // const clip = inReq.body.clip;
     return 'true';
@@ -76,6 +83,7 @@ export default {
     },
     api: async (fastify) => {
         fastify.post('/init', init);
+        fastify.post('/home', home);
         fastify.post('/support', support);
         fastify.post('/detail', detail);
         fastify.post('/play', play);

@@ -158,6 +158,7 @@ async function home(_inReq, _outResp) {
     return {
         class: classes,
         filters: filterObj,
+        list: [],
     };
 }
 
