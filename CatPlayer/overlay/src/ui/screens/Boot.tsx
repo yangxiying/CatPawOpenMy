@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, ScrollView, StyleSheet, Clipboard } from 'react-native';
 import NodeService from '../../node/NodeService';
-import { CatApi } from '../../api/CatApi';
+import { CatApi, CatConfig } from '../../api/CatApi';
 import { useNav } from '../App';
 
 export default function Boot() {

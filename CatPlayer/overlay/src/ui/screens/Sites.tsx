@@ -18,11 +18,15 @@ type RecItem = {
 
 export default function Sites({ config }: { config: CatConfig }) {
     const nav = useNav();
-    const sites: Site[] = config?.video?.sites || [];
-    const hasSites = sites.length > 0;
 
-    const [activeApi, setActiveApi] = useState<string>(hasSites ? sites[0].api : '');
-    const [activeSite, setActiveSite] = useState<Site | null>(hasSites ? sites[0] : null);
+    const [fetchedConfig, setFetchedConfig] = useState<CatConfig | null>(null);
+    // Tab 切换回来 config 丢失时使用自动拉取的 config
+    const effectiveConfig = fetchedConfig || config;
+    const effectiveSites: Site[] = effectiveConfig?.video?.sites || [];
+    const hasSites = effectiveSites.length > 0;
+
+    const [activeApi, setActiveApi] = useState<string>(hasSites ? effectiveSites[0].api : '');
+    const [activeSite, setActiveSite] = useState<Site | null>(hasSites ? effectiveSites[0] : null);
     const [showDropdown, setShowDropdown] = useState(false);
     const [classes, setClasses] = useState<{ type_id: any; type_name: string }[]>([]);
     const [activeTab, setActiveTab] = useState<string>('');
@@ -30,12 +34,6 @@ export default function Sites({ config }: { config: CatConfig }) {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const loadingRef = useRef(false);
-    const [fetchedConfig, setFetchedConfig] = useState<CatConfig | null>(null);
-
-    // Tab 切换回来 config 丢失时自动拉取
-    const effectiveConfig = fetchedConfig || config;
-    const effectiveSites: Site[] = effectiveConfig?.video?.sites || [];
-    const hasSites = effectiveSites.length > 0;
 
     /** 智能解析 home 返回，兜底尝试加载分类内容 */
     const resolveContent = useCallback(async (api: string, home: any): Promise<{items: any[], cls: any[], tabId: string}> => {

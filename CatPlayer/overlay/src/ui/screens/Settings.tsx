@@ -397,7 +397,7 @@ export default function Settings() {
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView style={modalStyles.body} keyboardShouldPersistTiles="handled">
+                        <ScrollView style={modalStyles.body} keyboardShouldPersistTaps="handled">
                             <Text style={modalStyles.fieldLabel}>名称</Text>
                             <TextInput
                                 style={modalStyles.input}

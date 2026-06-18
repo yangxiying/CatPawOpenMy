@@ -445,7 +445,7 @@ class NodeServiceImpl {
     }
 
     public log(msg: string) { this.logCbs.forEach(cb => cb(msg)); }
-    private error(msg: string) { this.errCbs.forEach(cb => cb(msg)); }
+    public error(msg: string) { this.errCbs.forEach(cb => cb(msg)); }
 
     setWebViewRef(ref: WebViewNodeRef | null) { this.wvRef = ref; }
 
@@ -468,7 +468,7 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
     const [logs, setLogs] = useState<string[]>([]);
     const [err, setErr] = useState<string | null>(null);
     const [, forceRender] = useState(0);
-    const wvRef = useRef<WebViewNodeRef>(null);
+    const wvRef = useRef<WebViewNodeRef | null>(null);
 
     const setWvRef = useCallback((ref: WebViewNodeRef | null) => {
         wvRef.current = ref;
