@@ -91,7 +91,7 @@ export default function App() {
             {/* 服务源：显示正常原生 UI */}
             <SafeAreaView style={styles.root}>
                 <StatusBar barStyle="light-content" backgroundColor="#0b0b0f" />
-                {!isPlayer && (
+                {!isPlayer && cur.name !== 'Sites' && (
                     <View style={styles.header}>
                         {canBack ? (
                             <TouchableOpacity onPress={nav.pop} style={styles.side}><Text style={styles.back}>‹ 返回</Text></TouchableOpacity>

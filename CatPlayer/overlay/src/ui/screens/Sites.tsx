@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
     View, Text, FlatList, TouchableOpacity, Image,
     ActivityIndicator, ScrollView, StyleSheet, Dimensions, Modal,
@@ -12,22 +12,17 @@ const GAP = 8;
 const W = (Dimensions.get('window').width - GAP * (COLS + 1)) / COLS;
 
 type RecItem = {
-    vod_id: string;
-    vod_name: string;
-    vod_pic: string;
-    vod_score?: string;
-    vod_remarks?: string;
+    vod_id: string; vod_name: string; vod_pic: string;
+    vod_score?: string; vod_remarks?: string;
 };
 
-/**
- * 首页：顶部站点信息栏 + 分类 Tab 选择 + 内容网格。
- * 匹配「瓜子秒播」样式：站点名 + 分享/搜索图标、分类 Tab 切换、评分标签。
- */
 export default function Sites({ config }: { config: CatConfig }) {
     const nav = useNav();
     const sites: Site[] = config?.video?.sites || [];
-    const [activeApi, setActiveApi] = useState<string>(sites[0]?.api || '');
-    const [activeSite, setActiveSite] = useState<Site | null>(sites[0] || null);
+    const hasSites = sites.length > 0;
+
+    const [activeApi, setActiveApi] = useState<string>(hasSites ? sites[0].api : '');
+    const [activeSite, setActiveSite] = useState<Site | null>(hasSites ? sites[0] : null);
     const [showDropdown, setShowDropdown] = useState(false);
     const [classes, setClasses] = useState<{ type_id: any; type_name: string }[]>([]);
     const [activeTab, setActiveTab] = useState<string>('');
@@ -36,20 +31,10 @@ export default function Sites({ config }: { config: CatConfig }) {
     const [msg, setMsg] = useState<string | null>(null);
     const loadingRef = useRef(false);
 
-    // 诊断日志
-    useEffect(() => {
-        console.log('[Sites] mounted: sites.length=' + sites.length + ' activeApi=' + activeApi);
-        NodeService?.log?.('[Sites] config.video.sites.length=' + sites.length);
-        if (sites.length > 0) {
-            NodeService?.log?.('[Sites] first site: name=' + sites[0].name + ' api=' + sites[0].api);
-        }
-    }, []);
-
-    /** 加载站点首页（推荐内容） */
-    useEffect(() => {
-        if (!activeApi) return;
+    /** 加载站点内容（home 或第一分类） */
+    const loadSite = useCallback(async (api: string) => {
+        if (!api) return;
         if (loadingRef.current) return;
-        let cancel = false;
         loadingRef.current = true;
         setLoading(true);
         setMsg(null);
@@ -57,83 +42,79 @@ export default function Sites({ config }: { config: CatConfig }) {
         setActiveTab('');
         setRecs([]);
 
-        (async () => {
-            try {
-                await CatApi.ensureInit(activeApi);
-                const home = await CatApi.home(activeApi);
-                if (cancel) return;
+        try {
+            await CatApi.ensureInit(api);
+            const home = await CatApi.home(api);
+            if (!home) { setMsg('接口无返回'); return; }
 
-                const cls = home?.class || [];
-                setClasses(cls);
+            const cls = home.class || [];
+            setClasses(cls);
 
-                // 取推荐列表
-                let items: any[] = home?.list || home?.likes || home?.recommend || [];
-                if (!Array.isArray(items) || items.length === 0) {
-                    items = [];
-                    if (cls.length > 0) {
-                        try {
-                            const catData = await CatApi.category(activeApi, cls[0].type_id, 1, {});
-                            items = catData?.list || [];
-                        } catch {}
-                    }
-                }
-
-                const mapped: RecItem[] = (Array.isArray(items) ? items : []).map(it => ({
-                    vod_id: it.vod_id,
-                    vod_name: it.vod_name,
-                    vod_pic: it.vod_pic,
-                    vod_score: it.vod_score || '',
-                    vod_remarks: it.vod_remarks || '',
-                }));
-                setRecs(mapped.slice(0, 30));
-                if (mapped.length === 0) setMsg(cls.length > 0 ? '选择分类浏览内容' : '暂无内容');
-            } catch (e: any) {
-                if (cancel) return;
-                setMsg('加载失败: ' + (e?.message || e));
-            } finally {
-                if (!cancel) {
-                    setLoading(false);
-                    loadingRef.current = false;
+            let items: any[] = home.list || home.likes || home.recommend || [];
+            if (!Array.isArray(items) || items.length === 0) {
+                items = [];
+                if (cls.length > 0) {
+                    try {
+                        const catData = await CatApi.category(api, cls[0].type_id, 1, {});
+                        items = catData?.list || [];
+                    } catch {}
                 }
             }
-        })();
 
-        return () => { cancel = true; };
-    }, [activeApi]);
+            const mapped: RecItem[] = (Array.isArray(items) ? items : []).map(it => ({
+                vod_id: it.vod_id, vod_name: it.vod_name, vod_pic: it.vod_pic,
+                vod_score: it.vod_score || '', vod_remarks: it.vod_remarks || '',
+            }));
+            setRecs(mapped.slice(0, 30));
+            if (mapped.length === 0) setMsg(cls.length > 0 ? '选择分类浏览内容' : '暂无内容');
+        } catch (e: any) {
+            setMsg('加载失败: ' + (e?.message || e));
+        } finally {
+            setLoading(false);
+            loadingRef.current = false;
+        }
+    }, []);
 
-    /** 切换站点 */
-    const switchSite = (s: Site) => {
+    // 站点切换时加载内容
+    useEffect(() => {
+        if (!activeApi) return;
+        loadSite(activeApi);
+    }, [activeApi, loadSite]);
+
+    const switchSite = useCallback((s: Site) => {
         setShowDropdown(false);
         setActiveSite(s);
         setActiveApi(s.api);
-    };
+    }, []);
 
-    /** 切换分类 Tab → 加载该分类内容 */
-    const switchTab = (cl: { type_id: any; type_name: string }) => {
+    /** 切换分类 Tab */
+    const switchTab = useCallback(async (cl: { type_id: any; type_name: string }) => {
         setActiveTab(String(cl.type_id));
+        if (loadingRef.current) return;
+        loadingRef.current = true;
         setLoading(true);
         setMsg(null);
-        CatApi.category(activeApi, cl.type_id, 1, {})
-            .then(data => {
-                const items: RecItem[] = (data?.list || []).map((it: any) => ({
-                    vod_id: it.vod_id,
-                    vod_name: it.vod_name,
-                    vod_pic: it.vod_pic,
-                    vod_score: it.vod_score || '',
-                    vod_remarks: it.vod_remarks || '',
-                }));
-                setRecs(items.slice(0, 30));
-                if (items.length === 0) setMsg('暂无内容');
-            })
-            .catch(e => setMsg('加载失败: ' + String(e?.message || e)))
-            .finally(() => setLoading(false));
-    };
+
+        try {
+            const data = await CatApi.category(activeApi, cl.type_id, 1, {});
+            const items: RecItem[] = (data?.list || []).map((it: any) => ({
+                vod_id: it.vod_id, vod_name: it.vod_name, vod_pic: it.vod_pic,
+                vod_score: it.vod_score || '', vod_remarks: it.vod_remarks || '',
+            }));
+            setRecs(items.slice(0, 30));
+            if (items.length === 0) setMsg('暂无内容');
+        } catch (e: any) {
+            setMsg('加载失败: ' + String(e?.message || e));
+        } finally {
+            setLoading(false);
+            loadingRef.current = false;
+        }
+    }, [activeApi]);
 
     const goDetail = (item: RecItem) => {
         if (activeSite) nav.push('Detail', { site: activeSite, vodId: item.vod_id });
     };
 
-    /** 评分颜色：高分青/蓝，中分橙/黄，低分灰 */
     const scoreColor = (s: string) => {
         const n = parseFloat(s);
         if (isNaN(n)) return '#ff9f43';
@@ -142,28 +123,40 @@ export default function Sites({ config }: { config: CatConfig }) {
         return '#999';
     };
 
+    // ── 无站点时的空状态 ──
+    if (!hasSites) {
+        return (
+            <View style={styles.c}>
+                <View style={styles.header}>
+                    <View style={styles.headerLeft}>
+                        <View style={styles.siteIcon}><Text style={styles.siteIconT}>G</Text></View>
+                        <Text style={styles.headerTitle}>选择站点</Text>
+                    </View>
+                </View>
+                <View style={styles.center}>
+                    <Text style={styles.msg}>请先在首页点击「解析」获取站点列表</Text>
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.c}>
-            {/* ═══════ 顶部站点信息栏 ═══════ */}
+            {/* ── 顶部站点信息栏 ── */}
             <View style={styles.header}>
                 <TouchableOpacity style={styles.headerLeft} onPress={() => setShowDropdown(true)} activeOpacity={0.7}>
-                    <View style={styles.siteIcon}>
-                        <Text style={styles.siteIconT}>G</Text>
-                    </View>
+                    <View style={styles.siteIcon}><Text style={styles.siteIconT}>G</Text></View>
                     <Text style={styles.headerTitle} numberOfLines={1}>{activeSite?.name || '选择站点'}</Text>
                     <Text style={styles.headerArrow}>{' ▾'}</Text>
                 </TouchableOpacity>
                 <View style={styles.headerRight}>
-                    <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.6}>
-                        <Text style={styles.headerIcon}>{'🔗'}</Text>
-                    </TouchableOpacity>
                     <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.6} onPress={() => nav.push('Search', { site: activeSite })}>
                         <Text style={styles.headerIcon}>{'🔍'}</Text>
                     </TouchableOpacity>
                 </View>
             </View>
 
-            {/* ═══════ 站点下拉选择 ═══════ */}
+            {/* ── 站点下拉选择 ── */}
             <Modal visible={showDropdown} transparent animationType="fade" onRequestClose={() => setShowDropdown(false)}>
                 <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setShowDropdown(false)}>
                     <View style={styles.dropdownPanel}>
@@ -187,7 +180,7 @@ export default function Sites({ config }: { config: CatConfig }) {
                 </TouchableOpacity>
             </Modal>
 
-            {/* ═══════ 分类 Tab 栏 ═══════ */}
+            {/* ── 分类 Tab ── */}
             {classes.length > 0 && (
                 <View style={styles.tabBar}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
@@ -204,12 +197,17 @@ export default function Sites({ config }: { config: CatConfig }) {
                 </View>
             )}
 
-            {/* ═══════ 内容网格 ═══════ */}
+            {/* ── 内容网格 / 状态 ── */}
             {loading ? (
                 <View style={styles.center}><ActivityIndicator color="#7aa2ff" size="large" /></View>
             ) : recs.length === 0 ? (
                 <View style={styles.center}>
                     <Text style={styles.msg}>{msg || '暂无内容'}</Text>
+                    {msg?.includes('加载失败') && (
+                        <TouchableOpacity style={styles.goAllBtn} onPress={() => { loadSite(activeApi); }}>
+                            <Text style={styles.goAllBtnT}>重试</Text>
+                        </TouchableOpacity>
+                    )}
                     {activeSite && classes.length > 0 && !activeTab && (
                         <TouchableOpacity style={styles.goAllBtn} onPress={() => classes[0] && switchTab(classes[0])}>
                             <Text style={styles.goAllBtnT}>浏览内容 ›</Text>
@@ -228,13 +226,11 @@ export default function Sites({ config }: { config: CatConfig }) {
                         <TouchableOpacity style={[styles.card, { width: W }]} onPress={() => goDetail(item)} activeOpacity={0.8}>
                             <View style={[styles.picWrap, { width: W, height: W * 1.4 }]}>
                                 <Image source={{ uri: item.vod_pic }} style={styles.pic} />
-                                {/* 评分标签 */}
                                 {!!item.vod_score && (
                                     <View style={[styles.scoreBadge, { backgroundColor: scoreColor(item.vod_score) }]}>
                                         <Text style={styles.scoreText}>{item.vod_score}</Text>
                                     </View>
                                 )}
-                                {/* 备注标签（如 更新到XX集） */}
                                 {!!item.vod_remarks && !item.vod_score && (
                                     <View style={styles.remarkBadge}>
                                         <Text style={styles.remarkText} numberOfLines={1}>{item.vod_remarks}</Text>
@@ -253,27 +249,9 @@ export default function Sites({ config }: { config: CatConfig }) {
 
 const styles = StyleSheet.create({
     c: { flex: 1, backgroundColor: '#0b0b0f' },
-
-    /* ── 顶部站点信息栏 ── */
-    header: {
-        height: 50,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#1d1d25',
-        backgroundColor: '#0f0f14',
-    },
+    header: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#1d1d25', backgroundColor: '#0f0f14' },
     headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    siteIcon: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: '#7aa2ff',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    siteIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#7aa2ff', alignItems: 'center', justifyContent: 'center' },
     siteIconT: { color: '#fff', fontSize: 14, fontWeight: '700' },
     headerTitle: { color: '#e6e8ef', fontSize: 16, fontWeight: '600', marginLeft: 8, flex: 1 },
     headerArrow: { color: '#9aa0ad', fontSize: 12, marginRight: 8 },
@@ -281,7 +259,6 @@ const styles = StyleSheet.create({
     headerIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#1a1a24', alignItems: 'center', justifyContent: 'center' },
     headerIcon: { fontSize: 16 },
 
-    /* ── 站点下拉 ── */
     dropdownOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     dropdownPanel: { width: '100%', maxHeight: '70%', backgroundColor: '#1a1a24', borderRadius: 14, overflow: 'hidden' },
     dropdownTitle: { color: '#9aa0ad', fontSize: 13, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
@@ -292,60 +269,24 @@ const styles = StyleSheet.create({
     dropdownItemTOn: { color: '#7aa2ff', fontWeight: '600' },
     dropdownCheck: { color: '#7aa2ff', fontSize: 14, fontWeight: '700' },
 
-    /* ── 分类 Tab 栏 ── */
     tabBar: { height: 42, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#1d1d25', justifyContent: 'center', backgroundColor: '#0f0f14' },
     tabScroll: { flexDirection: 'row', paddingHorizontal: 8, gap: 0, alignItems: 'flex-end' },
-    tabItem: {
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    tabItem: { paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
     tabLabel: { color: '#8a8f9c', fontSize: 14 },
     tabLabelOn: { color: '#e6e8ef', fontSize: 14, fontWeight: '600' },
-    tabUnderline: {
-        position: 'absolute',
-        bottom: 0,
-        left: 14,
-        right: 14,
-        height: 3,
-        borderRadius: 1.5,
-        backgroundColor: '#7aa2ff',
-    },
+    tabUnderline: { position: 'absolute', bottom: 0, left: 14, right: 14, height: 3, borderRadius: 1.5, backgroundColor: '#7aa2ff' },
 
-    /* ── 内容网格 ── */
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
     msg: { color: '#777', fontSize: 13, textAlign: 'center' },
     goAllBtn: { marginTop: 16, paddingHorizontal: 22, paddingVertical: 10, borderRadius: 20, backgroundColor: '#2a2f45' },
     goAllBtnT: { color: '#7aa2ff', fontSize: 14, fontWeight: '600' },
 
-    /* ── 卡片 ── */
     card: { marginBottom: GAP, borderRadius: 8, overflow: 'hidden', backgroundColor: '#12121a' },
     picWrap: { borderRadius: 8, overflow: 'hidden', backgroundColor: '#16161d', position: 'relative' },
     pic: { width: '100%', height: '100%', resizeMode: 'cover' },
     vn: { color: '#e6e8ef', fontSize: 12, marginTop: 6, marginLeft: 4, marginRight: 4, marginBottom: 4 },
-
-    /* ── 评分标签 ── */
-    scoreBadge: {
-        position: 'absolute',
-        top: 6,
-        right: 6,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-    },
+    scoreBadge: { position: 'absolute', top: 6, right: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     scoreText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-
-    /* ── 备注标签 ── */
-    remarkBadge: {
-        position: 'absolute',
-        bottom: 6,
-        left: 6,
-        right: 6,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-    },
+    remarkBadge: { position: 'absolute', bottom: 6, left: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     remarkText: { color: '#fff', fontSize: 10 },
 });
