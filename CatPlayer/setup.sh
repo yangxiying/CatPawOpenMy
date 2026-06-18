@@ -16,11 +16,13 @@ APP_DIR="$HERE/app"
 NAME="CatPlayer"
 RN_VERSION="0.74.7"
 
-if [ ! -d "$APP_DIR" ] || [ ! -f "$APP_DIR/package.json" ]; then
+if [ ! -f "$APP_DIR/package.json" ]; then
     echo "▶ generating RN shell (react-native $RN_VERSION) …"
     echo "  node: $(node -v)  npm: $(npm -v)"
+    # 删除旧 app 目录（可能残留 git tracked 文件），避免 npx init 报错
+    rm -rf "$APP_DIR"
     npm cache clean --force 2>/dev/null || true
-    npx "@react-native-community/cli@12.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION" --verbose 2>&1 || true
+    npx "@react-native-community/cli@12.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION" 2>&1
     echo "  app/ contents after npx init:"
     ls -la "$APP_DIR" 2>/dev/null || echo "  (app dir does not exist)"
 fi
