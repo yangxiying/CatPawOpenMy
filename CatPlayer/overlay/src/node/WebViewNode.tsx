@@ -92,6 +92,7 @@ window.__POLYFILL_DONE = 1;
                 onLog?.('WebView polyfill ready');
                 if (isWebsite) {
                     const bCode = bundleCode;
+                    const cCode = configCode;
                     wvRef.current?.injectJavaScript(`
 (async () => {
 var _log = window._log || function(m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[WV] '+m})); } catch(e) {} };
@@ -105,6 +106,27 @@ try {
     var __m = { exports: {} };
     __fn(__req, __m, __m.exports, '/main.js', '/');
     _log('outer bundle executed');
+
+    // Start server → register handler in polyfill HTTP_SERVERS
+    var _svMod = __m.exports.default || __m.exports;
+    if (typeof _svMod.start === 'function') {
+        _log('starting server...');
+        try {
+            var _svCfg = { default: {} };
+            try {
+                var _svCfgCode = ${JSON.stringify(cCode)};
+                var _svCfgFn = new Function('exports','module',_svCfgCode);
+                var _svCfgM = { exports: {} };
+                _svCfgFn(_svCfgM.exports, _svCfgM);
+                _svCfg.default = _svCfgM.exports.default || _svCfgM.exports;
+                _log('config loaded');
+            } catch(e) { _log('config load fail: ' + String(e)); }
+            await _svMod.start(_svCfg.default);
+            _log('server started');
+        } catch(e) { _log('server start error: ' + String(e)); }
+    } else {
+        _log('no mod.start in bundle');
+    }
 
     if (typeof globalThis.websiteBundle === 'undefined') {
         throw new Error('not a website source');
