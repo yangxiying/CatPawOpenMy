@@ -27,6 +27,18 @@ globalThis.process = globalThis.process || {
     exit: () => {},
     stdout: { write: (s) => { console.log(s); } },
     stderr: { write: (s) => { console.error(s); } },
+    hrtime: (() => {
+        const _origin = (typeof performance !== 'undefined' ? performance : Date).now();
+        const fn = (prev) => {
+            const now = (typeof performance !== 'undefined' ? performance : Date).now() - _origin;
+            const sec = Math.floor(now / 1000);
+            const ns = Math.floor((now % 1000) * 1e6);
+            if (prev) return [sec - prev[0], ns - prev[1]];
+            return [sec, ns];
+        };
+        fn.bigint = () => BigInt(Math.floor(((typeof performance !== 'undefined' ? performance : Date).now() - _origin) * 1e6));
+        return fn;
+    })(),
 };
 globalThis.setImmediate = globalThis.setImmediate || ((fn, ...a) => setTimeout(() => fn(...a), 0));
 globalThis.clearImmediate = globalThis.clearImmediate || clearTimeout;
@@ -376,15 +388,29 @@ function cryptoPolyfill() {
 // 7. fs polyfill (最小化)
 // ============================================================
 function fsPolyfill() {
+    const memFs = new Map(); // 内存文件系统
     function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
     return {
-        existsSync: () => false,
-        readFileSync: () => { throw enoent('ENOENT: no such file or directory, read'); },
-        writeFileSync: () => {},
+        existsSync: (path) => memFs.has(path) || String(path).includes('db.json'),
+        readFileSync: (path, enc) => {
+            if (memFs.has(path)) return enc === 'utf8' ? memFs.get(path) : Buffer.from(memFs.get(path));
+            // 数据库文件：返回空 JSON
+            if (String(path).includes('db.json')) return '{}';
+            throw enoent('ENOENT: no such file or directory, read ' + path);
+        },
+        writeFileSync: (path, data, enc) => {
+            memFs.set(path, enc === 'utf8' ? data : String(data));
+        },
         mkdirSync: () => {},
         mkdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
-        statSync: () => { throw enoent('ENOENT: no such file or directory, stat'); },
-        stat: (path, cb) => { process.nextTick(() => cb(enoent())); },
+        statSync: (path) => {
+            if (String(path).includes('db.json')) return { size: 0, mode: 0o644, isFile: () => true, isDirectory: () => false };
+            throw enoent('ENOENT: no such file or directory, stat');
+        },
+        stat: (path, cb) => {
+            if (String(path).includes('db.json')) { process.nextTick(() => cb(null, { size: 0, mode: 0o644, isFile: () => true, isDirectory: () => false })); return; }
+            process.nextTick(() => cb(enoent()));
+        },
         readdirSync: () => [],
         openSync: () => -1,
         open: (path, flags, mode, cb) => { if (typeof mode === 'function') { cb = mode; } process.nextTick(() => cb(null, -1)); },
@@ -403,15 +429,27 @@ function fsPolyfill() {
         ftruncateSync: () => {},
         realpathSync: (p) => p,
         access: (path, mode, cb) => { if (typeof mode === 'function') { cb = mode; } if (cb) process.nextTick(cb); },
-        readFile: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(enoent())); },
-        unlink: (path, cb) => { if (cb) process.nextTick(() => cb(enoent())); },
+        readFile: (path, opts, cb) => {
+            if (typeof opts === 'function') { cb = opts; }
+            if (cb) process.nextTick(() => {
+                if (memFs.has(path)) { cb(null, opts === 'utf8' || (opts && opts.encoding === 'utf8') ? memFs.get(path) : Buffer.from(memFs.get(path))); return; }
+                if (String(path).includes('db.json')) { cb(null, '{}'); return; }
+                cb(enoent('ENOENT: no such file or directory, readFile ' + path));
+            });
+        },
+        writeFile: (path, data, opts, cb) => {
+            if (typeof opts === 'function') { cb = opts; }
+            memFs.set(path, typeof data === 'string' ? data : String(data));
+            if (cb) process.nextTick(() => cb(null));
+        },
+        unlink: (path, cb) => { memFs.delete(path); if (cb) process.nextTick(() => cb(null)); },
         unlinkSync: () => {},
         readdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(null, [])); },
         rename: (oldPath, newPath, cb) => { if (cb) process.nextTick(cb); },
         copyFile: (src, dest, cb) => { if (cb) process.nextTick(cb); },
         appendFile: (path, data, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
         watch: (path, opts, cb) => ({ on: () => {}, close: () => {} }),
-        exists: (path, cb) => { if (cb) process.nextTick(() => cb(false)); },
+        exists: (path, cb) => { if (cb) process.nextTick(() => cb(memFs.has(path) || String(path).includes('db.json'))); },
         promises: undefined,
     };
 }
@@ -446,7 +484,24 @@ const MODULES = {
     'child_process': {},
     'fs/promises': (() => {
         var _memFs = {};
-        function enoent() { const e = new Error('ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+        function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+        function makeFd(path) {
+            var fd = {
+                _path: path,
+                _buf: '',
+                writeFile: function(data, opts) {
+                    _memFs[String(path)] = typeof data === 'string' ? data : String(data);
+                    return Promise.resolve();
+                },
+                write: function(buffer, offset, len, position) {
+                    fd._buf += typeof buffer === 'string' ? buffer : '';
+                    return Promise.resolve();
+                },
+                sync: function() { return Promise.resolve(); },
+                close: function() { return Promise.resolve(); },
+            };
+            return fd;
+        }
         return {
             access: (path) => Promise.resolve(undefined),
             readFile: (path, opts) => {
@@ -456,8 +511,8 @@ const MODULES = {
                     if (opts && opts.encoding === 'utf-8') return Promise.resolve(typeof val === 'string' ? val : '');
                     return Promise.resolve(val);
                 }
-                if (opts && opts.encoding === 'utf-8') return Promise.resolve('');
-                return Promise.resolve(new Uint8Array(0));
+                // 文件不存在必须 reject ENOENT，node-json-db FileAdapter 依赖此信号
+                return Promise.reject(enoent('ENOENT: no such file or directory, read ' + path));
             },
             writeFile: (path, data, opts) => {
                 _memFs[String(path || '')] = data;
@@ -486,7 +541,19 @@ const MODULES = {
                 _memFs[key] = (prev || '') + (data || '');
                 return Promise.resolve();
             },
-            open: (path, flags, mode) => Promise.reject(enoent()),
+            open: (path, flags, mode) => {
+                // 'w' 模式：创建/截断文件，返回可写 fd
+                var key = String(path || '');
+                if (typeof flags === 'string' && flags.indexOf('w') >= 0) {
+                    _memFs[key] = '';
+                    return Promise.resolve(makeFd(key));
+                }
+                // 'r' 模式：文件存在则返回 fd 供 stat/fstat 等，不存在则 reject
+                if (_memFs.hasOwnProperty(key)) {
+                    return Promise.resolve(makeFd(key));
+                }
+                return Promise.reject(enoent('ENOENT: no such file or directory, open ' + path));
+            },
             watch: (path, opts) => ({ on: () => {}, close: () => {} }),
             exists: (path) => Promise.resolve(!!_memFs[String(path || '')]),
             readlink: (path) => Promise.reject(enoent()),
@@ -528,20 +595,42 @@ const MODULES = {
     'buffer': { Buffer: globalThis.Buffer, Blob: class Blob { constructor(parts, opts) { this._parts = parts || []; this.type = opts?.type || ''; } async arrayBuffer() { return new ArrayBuffer(0); } get size() { return 0; } slice() { return new Blob(); } stream() { return new EventEmitterPolyfill(); } text() { return Promise.resolve(''); } }, File: class File extends (globalThis.Blob || Blob) { constructor(parts, name, opts) { super(parts, opts); this.name = name; this.lastModified = opts?.lastModified || Date.now(); } }, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
 };
 
+// CDN global fallback: website source bundle 内部 require('react') 等走 polyfill
+// CDN 脚本已注入 window.React / window.ReactDOM / window.antd 等
+var WINDOW_FALLBACK = {
+    react: function() { return window.React || {}; },
+    'react-dom': function() { return window.ReactDOM || {}; },
+    'react-dom/client': function() { return { createRoot: window.ReactDOM?.createRoot?.bind(window.ReactDOM) }; },
+    antd: function() { return window.antd || {}; },
+    axios: function() { return window.axios || {}; },
+    dayjs: function() { return window.dayjs || {}; },
+    classnames: function() { return window.classNames || function() { var args = arguments; return Array.prototype.slice.call(args).filter(Boolean).join(' '); }; },
+    '@ant-design/icons': function() { return window.icons || {}; },
+    'prop-types': function() { return { any: {}, array: {}, bool: {}, func: {}, number: {}, object: {}, string: {}, node: {}, element: {}, oneOfType: function() { return {}; }, shape: function() { return {}; } }; },
+};
+var _modCache = {};
+
 function customRequire(moduleName) {
     var mod = MODULES[moduleName];
     if (!mod) {
         var stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
         if (stripped) mod = MODULES[stripped];
     }
+    if (!mod) {
+        // Fallback: 從 window 全局獲取 CDN 載入的庫
+        var fallback = WINDOW_FALLBACK[moduleName];
+        if (fallback) {
+            mod = fallback();
+        } else {
+            // 檢查 window 是否有同名全局
+            var globalKey = moduleName.replace(/^@/, '').replace(/\\//g, '_');
+            mod = window[globalKey] || window[moduleName];
+        }
+    }
     if (!mod) mod = {};
     // Babel __esModule interop: ensure every module has __esModule and default
     if (!mod.__esModule) mod.__esModule = true;
     if (!mod.default) mod.default = mod;
-    // Diagnostic: log first few unusual requires
-    if (moduleName === 'node:https' || moduleName === 'https') {
-        _log('require(' + moduleName + ') => keys=' + Object.keys(mod).join(',') + ' default=' + (typeof mod.default));
-    }
     return mod;
 }
 
@@ -556,7 +645,9 @@ window.addEventListener('message', (event) => {
     const port = msg.port || 18080;
     const handler = HTTP_SERVERS[port];
     if (!handler) {
-        console.warn('[polyfill] no handler for port', port);
+        const keys = Object.keys(HTTP_SERVERS);
+        console.warn('[polyfill] no handler for port', port, 'registered:', keys);
+        try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[polyfill] no handler port='+port+' registered='+keys})); } catch {}
         return;
     }
 
@@ -592,6 +683,10 @@ window.addEventListener('message', (event) => {
     res.write = (chunk) => { resBody += String(chunk); };
     res.end = (chunk) => {
         if (chunk) resBody += String(chunk);
+        // Diagnostic: log /config response length
+        if (msg.url && msg.url.indexOf('/config') >= 0) {
+            try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[polyfill] /config response len=' + resBody.length + ' preview=' + resBody.slice(0, 120)})); } catch {}
+        }
         try {
             window.ReactNativeWebView?.postMessage(JSON.stringify({
                 type: 'response',
@@ -621,7 +716,9 @@ window.addEventListener('message', (event) => {
         try { req.emit('end'); } catch (e) { /* ignore */ }
     });
 
-    try { handler(req, res); } catch (e) {
+    try {
+        handler(req, res);
+    } catch (e) {
         console.error('[polyfill] handler error', e);
         window.ReactNativeWebView?.postMessage(JSON.stringify({
             type: 'response', reqId: msg.reqId, status: 500, headers: {}, body: String(e),
@@ -660,6 +757,31 @@ _log('globals injected');
 
 console.log('[polyfill] Node.js polyfills loaded (WebView)');
 try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: 'polyfill env ready' })); } catch {}
+
+// 拦截 fetch 请求：将 API 请求代理到远程后端
+(function() {
+    var _origFetch = window.fetch;
+    window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        // API 请求匹配：/spider/、/config、/check
+        if (url && (url.indexOf('/spider/') >= 0 || url === '/config' || url.indexOf('/config?') >= 0 || url === '/check' || url.indexOf('/check?') >= 0)) {
+            var msgId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            return new Promise(function(resolve, reject) {
+                window.__PROXY.pending[msgId] = { resolve: resolve, reject: reject };
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'proxyRequest',
+                    proxyId: msgId,
+                    method: (init && init.method) || 'GET',
+                    url: url,
+                    headers: (init && init.headers) || {},
+                    body: (init && init.body) || null,
+                }));
+            });
+        }
+        return _origFetch.apply(this, arguments);
+    };
+    window.__PROXY = { pending: {} };
+})();
 
 // 通知 RN polyfill 已就绪，可以注入 bundle
 try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {
