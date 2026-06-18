@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: write
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +33,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+
+      - name: Verify Node version
+        run: node -v && npm -v
 
       - name: Debug repo layout
         run: |
