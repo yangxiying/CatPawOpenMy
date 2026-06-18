@@ -472,6 +472,7 @@ const MODULES = {
     'url': urlPolyfill(),
     'fs': fsPolyfill(),
     'constants': {},
+    'crypto': (() => { const m = cryptoPolyfill(); m.default = m; m.__esModule = true; return m; })(),
     'diagnostics_channel': { channel: (name) => ({ publish: () => {}, subscribe: () => ({ unsubscribe: () => {} }) }) },
     'async_hooks': { AsyncLocalStorage: class AsyncLocalStorage { getStore() { return this._store; } run(store, cb, ...args) { this._store = store; return cb(...args); } }, AsyncResource: class AsyncResource { constructor(type) { this.type = type; } runInAsyncScope(cb, ...args) { return cb(...args); } emitDestroy() {} } },
     'http2': { createSecureServer: () => new EventEmitterPolyfill(), createServer: () => new EventEmitterPolyfill(), constants: {}, Http2ServerRequest: EventEmitterPolyfill, Http2ServerResponse: EventEmitterPolyfill },
