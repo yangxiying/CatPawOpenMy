@@ -62,7 +62,7 @@ export default function Boot() {
         }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
-            setLogs(l => [...l, '服务已就绪']);
+            setLogs(l => [...l, '服务已就绪，请点击「解析」或「进入」']);
             setReady(true);
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
         return () => { offLog(); offErr(); clearTimeout(timeout); };
