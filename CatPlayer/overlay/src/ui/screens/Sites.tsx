@@ -8,7 +8,7 @@ import { CatApi, Site, CatConfig } from '../../api/CatApi';
 import NodeService from '../../node/NodeService';
 
 const COLS = 3;
-const GAP = 8;
+const GAP = 5;
 const W = (Dimensions.get('window').width - GAP * (COLS + 1)) / COLS;
 
 type RecItem = {
@@ -31,7 +31,47 @@ export default function Sites({ config }: { config: CatConfig }) {
     const [msg, setMsg] = useState<string | null>(null);
     const loadingRef = useRef(false);
 
-    /** 加载站点内容（home 或第一分类） */
+    /** 智能解析 home 返回，兜底尝试加载分类内容 */
+    const resolveContent = useCallback(async (api: string, home: any): Promise<{items: any[], cls: any[], tabId: string}> => {
+        // 检测是否返回的是错误内容（Fastify 错误 JSON 或非结构化数据）
+        if (home?.statusCode || home?.error) {
+            NodeService?.log?.(`[Sites] home returned error: ${home.error || home.statusCode}`);
+            return { items: [], cls: [], tabId: '' };
+        }
+        const cls = Array.isArray(home?.class) ? home.class : [];
+        let items: any[] = home?.list || home?.likes || home?.recommend || [];
+
+        if (Array.isArray(items) && items.length > 0) {
+            return { items, cls, tabId: '' }; // home 有推荐内容
+        }
+
+        // home 无推荐但有分类 → 取第一个分类
+        if (cls.length > 0) {
+            try {
+                const catData = await CatApi.category(api, cls[0].type_id, 1, {});
+                const catItems = catData?.list || [];
+                if (Array.isArray(catItems) && catItems.length > 0) {
+                    return { items: catItems, cls, tabId: String(cls[0].type_id) };
+                }
+            } catch {}
+        }
+
+        // 兜底：尝试常见分类 ID
+        for (const fallbackId of ['1', '2', '3', 'dianying', 'movie']) {
+            try {
+                const catData = await CatApi.category(api, fallbackId, 1, {});
+                const catItems = catData?.list || [];
+                if (Array.isArray(catItems) && catItems.length > 0) {
+                    cls.push({ type_id: fallbackId, type_name: '全部' });
+                    return { items: catItems, cls, tabId: fallbackId };
+                }
+            } catch {}
+        }
+
+        return { items: [], cls, tabId: '' };
+    }, []);
+
+    /** 加载站点内容 */
     const loadSite = useCallback(async (api: string) => {
         if (!api) return;
         if (loadingRef.current) return;
@@ -44,22 +84,15 @@ export default function Sites({ config }: { config: CatConfig }) {
 
         try {
             await CatApi.ensureInit(api);
+            const start = Date.now();
             const home = await CatApi.home(api);
+            NodeService?.log?.(`[Sites] home took ${Date.now() - start}ms`);
+
             if (!home) { setMsg('接口无返回'); return; }
 
-            const cls = home.class || [];
+            const { items, cls, tabId } = await resolveContent(api, home);
             setClasses(cls);
-
-            let items: any[] = home.list || home.likes || home.recommend || [];
-            if (!Array.isArray(items) || items.length === 0) {
-                items = [];
-                if (cls.length > 0) {
-                    try {
-                        const catData = await CatApi.category(api, cls[0].type_id, 1, {});
-                        items = catData?.list || [];
-                    } catch {}
-                }
-            }
+            if (tabId) setActiveTab(tabId);
 
             const mapped: RecItem[] = (Array.isArray(items) ? items : []).map(it => ({
                 vod_id: it.vod_id, vod_name: it.vod_name, vod_pic: it.vod_pic,
@@ -73,7 +106,7 @@ export default function Sites({ config }: { config: CatConfig }) {
             setLoading(false);
             loadingRef.current = false;
         }
-    }, []);
+    }, [resolveContent]);
 
     // 站点切换时加载内容
     useEffect(() => {
