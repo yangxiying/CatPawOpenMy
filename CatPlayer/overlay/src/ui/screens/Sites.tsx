@@ -33,6 +33,7 @@ export default function Sites({ config }: { config: CatConfig }) {
 
     /** 智能解析 home 返回，兜底尝试加载分类内容 */
     const resolveContent = useCallback(async (api: string, home: any): Promise<{items: any[], cls: any[], tabId: string}> => {
+        NodeService?.log?.(`[Sites] home raw keys=${Object.keys(home||{}).join(',')} class=${Array.isArray(home?.class)?home.class.length:typeof home?.class} list=${Array.isArray(home?.list)?home.list.length:typeof home?.list}`);
         // 检测是否返回的是错误内容（Fastify 错误 JSON 或非结构化数据）
         if (home?.statusCode || home?.error) {
             NodeService?.log?.(`[Sites] home returned error: ${home.error || home.statusCode}`);
@@ -49,11 +50,14 @@ export default function Sites({ config }: { config: CatConfig }) {
         if (cls.length > 0) {
             try {
                 const catData = await CatApi.category(api, cls[0].type_id, 1, {});
+                NodeService?.log?.(`[Sites] first category id=${cls[0].type_id} list=${Array.isArray(catData?.list)?catData.list.length:typeof catData?.list}`);
                 const catItems = catData?.list || [];
                 if (Array.isArray(catItems) && catItems.length > 0) {
                     return { items: catItems, cls, tabId: String(cls[0].type_id) };
                 }
-            } catch {}
+            } catch (e) {
+                NodeService?.log?.(`[Sites] first category failed: ${e}`);
+            }
         }
 
         // 兜底：尝试常见分类 ID
@@ -61,11 +65,14 @@ export default function Sites({ config }: { config: CatConfig }) {
             try {
                 const catData = await CatApi.category(api, fallbackId, 1, {});
                 const catItems = catData?.list || [];
+                NodeService?.log?.(`[Sites] fallback category id=${fallbackId} list=${Array.isArray(catItems)?catItems.length:typeof catItems}`);
                 if (Array.isArray(catItems) && catItems.length > 0) {
                     cls.push({ type_id: fallbackId, type_name: '全部' });
                     return { items: catItems, cls, tabId: fallbackId };
                 }
-            } catch {}
+            } catch (e) {
+                NodeService?.log?.(`[Sites] fallback ${fallbackId} failed: ${e}`);
+            }
         }
 
         return { items: [], cls, tabId: '' };
