@@ -297,7 +297,28 @@ function httpRequestPolyfill(url, options) {
                 headers: req.headers,
                 body: req._body || null,
             }));
-            PENDING_REQUESTS.set(reqId, { resolve: (res) => { req.emit('response', res); }, reject: (e) => { req.emit('error', e); } });
+            PENDING_REQUESTS.set(reqId, {
+                resolve: (bodyStr) => {
+                    // 将字符串包装为 IncomingMessage 兼容对象（支持 setEncoding/on('data')/on('end')/pipe）
+                    var buf = bodyStr || '';
+                    var idx = 0;
+                    var inRes = {
+                        statusCode: 200,
+                        headers: {},
+                        _data: buf,
+                        setEncoding: function(enc) {},
+                        on: function(ev, cb) {
+                            if (ev === 'data' && buf.length > 0) { cb(buf); idx = buf.length; }
+                            if (ev === 'end') setTimeout(cb, 0);
+                            return inRes;
+                        },
+                        pipe: function(dest) { dest.end(buf); return dest; },
+                        destroy: function() {},
+                    };
+                    req.emit('response', inRes);
+                },
+                reject: (e) => { req.emit('error', e); },
+            });
         } catch (e) { req.emit('error', e); }
     };
     return req;
