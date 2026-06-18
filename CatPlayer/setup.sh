@@ -22,6 +22,13 @@ if [ ! -d "$APP_DIR" ]; then
     npx "@react-native-community/cli@12.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION"
 fi
 
+if [ ! -f "$APP_DIR/package.json" ]; then
+    echo "❌ ERROR: $APP_DIR/package.json not found after npx init"
+    echo "   Listing CatPlayer directory:"
+    ls -la "$(dirname "$APP_DIR")" || true
+    exit 1
+fi
+
 cd "$APP_DIR"
 mkdir -p nodejs-assets 2>/dev/null || true  # 保留目录兼容性
 
