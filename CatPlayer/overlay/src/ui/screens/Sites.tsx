@@ -11,10 +11,17 @@ const COLS = 3;
 const GAP = 8;
 const W = (Dimensions.get('window').width - GAP * (COLS + 1)) / COLS;
 
-type RecItem = { vod_id: string; vod_name: string; vod_pic: string; vod_remarks?: string };
+type RecItem = {
+    vod_id: string;
+    vod_name: string;
+    vod_pic: string;
+    vod_score?: string;
+    vod_remarks?: string;
+};
 
 /**
- * 首页：下拉站点选择 + 分类快速入口 + 推荐/分类内容网格。
+ * 首页：顶部站点信息栏 + 分类 Tab 选择 + 内容网格。
+ * 匹配「瓜子秒播」样式：站点名 + 分享/搜索图标、分类 Tab 切换、评分标签。
  */
 export default function Sites({ config }: { config: CatConfig }) {
     const nav = useNav();
@@ -23,10 +30,11 @@ export default function Sites({ config }: { config: CatConfig }) {
     const [activeSite, setActiveSite] = useState<Site | null>(sites[0] || null);
     const [showDropdown, setShowDropdown] = useState(false);
     const [classes, setClasses] = useState<{ type_id: any; type_name: string }[]>([]);
+    const [activeTab, setActiveTab] = useState<string>('');
     const [recs, setRecs] = useState<RecItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
-    const loadingRef = useRef(false); // 防重复加载
+    const loadingRef = useRef(false);
 
     // 诊断日志
     useEffect(() => {
@@ -37,7 +45,7 @@ export default function Sites({ config }: { config: CatConfig }) {
         }
     }, []);
 
-    // 切换站点时拉取首页内容
+    /** 加载站点首页（推荐内容） */
     useEffect(() => {
         if (!activeApi) return;
         if (loadingRef.current) return;
@@ -46,6 +54,7 @@ export default function Sites({ config }: { config: CatConfig }) {
         setLoading(true);
         setMsg(null);
         setClasses([]);
+        setActiveTab('');
         setRecs([]);
 
         (async () => {
@@ -54,31 +63,30 @@ export default function Sites({ config }: { config: CatConfig }) {
                 const home = await CatApi.home(activeApi);
                 if (cancel) return;
 
-                NodeService?.log?.('[Sites] home response: ' + JSON.stringify(home).slice(0, 300));
                 const cls = home?.class || [];
                 setClasses(cls);
 
-                // 优先取 home 推荐的 list/likes/recommend
+                // 取推荐列表
                 let items: any[] = home?.list || home?.likes || home?.recommend || [];
                 if (!Array.isArray(items) || items.length === 0) {
-                    // home 没有推荐但有分类 → 自动加载第一个分类的内容
                     items = [];
                     if (cls.length > 0) {
-                        NodeService?.log?.('[Sites] home no list, fetching first category: ' + cls[0].type_name);
                         try {
                             const catData = await CatApi.category(activeApi, cls[0].type_id, 1, {});
                             items = catData?.list || [];
-                            NodeService?.log?.('[Sites] first category got ' + items.length + ' items');
-                        } catch (catErr: any) {
-                            NodeService?.log?.('[Sites] first category fetch failed: ' + String(catErr));
-                        }
+                        } catch {}
                     }
                 }
 
-                setRecs(Array.isArray(items) ? items.slice(0, 30) : []);
-                if (!Array.isArray(items) || items.length === 0) {
-                    setMsg(cls.length > 0 ? '选择分类浏览内容' : '暂无推荐');
-                }
+                const mapped: RecItem[] = (Array.isArray(items) ? items : []).map(it => ({
+                    vod_id: it.vod_id,
+                    vod_name: it.vod_name,
+                    vod_pic: it.vod_pic,
+                    vod_score: it.vod_score || '',
+                    vod_remarks: it.vod_remarks || '',
+                }));
+                setRecs(mapped.slice(0, 30));
+                if (mapped.length === 0) setMsg(cls.length > 0 ? '选择分类浏览内容' : '暂无内容');
             } catch (e: any) {
                 if (cancel) return;
                 setMsg('加载失败: ' + (e?.message || e));
@@ -93,65 +101,83 @@ export default function Sites({ config }: { config: CatConfig }) {
         return () => { cancel = true; };
     }, [activeApi]);
 
+    /** 切换站点 */
     const switchSite = (s: Site) => {
         setShowDropdown(false);
         setActiveSite(s);
         setActiveApi(s.api);
     };
 
-    const goCategory = (cl: { type_id: any; type_name: string }) => {
-        if (activeSite) nav.push('Category', { site: activeSite, initialClass: cl });
+    /** 切换分类 Tab → 加载该分类内容 */
+    const switchTab = (cl: { type_id: any; type_name: string }) => {
+        setActiveTab(String(cl.type_id));
+        setLoading(true);
+        setMsg(null);
+        CatApi.category(activeApi, cl.type_id, 1, {})
+            .then(data => {
+                const items: RecItem[] = (data?.list || []).map((it: any) => ({
+                    vod_id: it.vod_id,
+                    vod_name: it.vod_name,
+                    vod_pic: it.vod_pic,
+                    vod_score: it.vod_score || '',
+                    vod_remarks: it.vod_remarks || '',
+                }));
+                setRecs(items.slice(0, 30));
+                if (items.length === 0) setMsg('暂无内容');
+            })
+            .catch(e => setMsg('加载失败: ' + String(e?.message || e)))
+            .finally(() => setLoading(false));
+    };
+
+    const goDetail = (item: RecItem) => {
+        if (activeSite) nav.push('Detail', { site: activeSite, vodId: item.vod_id });
+    };
+
+    /** 评分颜色：高分青/蓝，中分橙/黄，低分灰 */
+    const scoreColor = (s: string) => {
+        const n = parseFloat(s);
+        if (isNaN(n)) return '#ff9f43';
+        if (n >= 8) return '#4fc3f7';
+        if (n >= 6) return '#ff9f43';
+        return '#999';
     };
 
     return (
         <View style={styles.c}>
-            {/* ═══════ 顶部站点选择器（下拉式） ═══════ */}
-            <View style={styles.siteBar}>
-                <TouchableOpacity
-                    style={styles.siteDropdownBtn}
-                    onPress={() => setShowDropdown(true)}
-                    activeOpacity={0.7}
-                >
-                    <Text style={styles.siteDropdownText} numberOfLines={1}>
-                        {activeSite?.name || '选择站点'}
-                    </Text>
-                    <Text style={styles.siteDropdownArrow}>{' ▾'}</Text>
+            {/* ═══════ 顶部站点信息栏 ═══════ */}
+            <View style={styles.header}>
+                <TouchableOpacity style={styles.headerLeft} onPress={() => setShowDropdown(true)} activeOpacity={0.7}>
+                    <View style={styles.siteIcon}>
+                        <Text style={styles.siteIconT}>G</Text>
+                    </View>
+                    <Text style={styles.headerTitle} numberOfLines={1}>{activeSite?.name || '选择站点'}</Text>
+                    <Text style={styles.headerArrow}>{' ▾'}</Text>
                 </TouchableOpacity>
+                <View style={styles.headerRight}>
+                    <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.6}>
+                        <Text style={styles.headerIcon}>{'🔗'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.6} onPress={() => nav.push('Search', { site: activeSite })}>
+                        <Text style={styles.headerIcon}>{'🔍'}</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
-            {/* ═══════ 下拉弹窗 ═══════ */}
-            <Modal
-                visible={showDropdown}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShowDropdown(false)}
-            >
-                <TouchableOpacity
-                    style={styles.dropdownOverlay}
-                    activeOpacity={1}
-                    onPress={() => setShowDropdown(false)}
-                >
+            {/* ═══════ 站点下拉选择 ═══════ */}
+            <Modal visible={showDropdown} transparent animationType="fade" onRequestClose={() => setShowDropdown(false)}>
+                <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setShowDropdown(false)}>
                     <View style={styles.dropdownPanel}>
                         <Text style={styles.dropdownTitle}>切换站点</Text>
                         <FlatList
                             data={sites}
-                            keyExtractor={(item) => item.api}
+                            keyExtractor={item => item.api}
                             style={styles.dropdownList}
                             showsVerticalScrollIndicator={false}
                             renderItem={({ item }) => {
                                 const isActive = item.api === activeApi;
                                 return (
-                                    <TouchableOpacity
-                                        style={[styles.dropdownItem, isActive && styles.dropdownItemOn]}
-                                        onPress={() => switchSite(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text
-                                            style={[styles.dropdownItemT, isActive && styles.dropdownItemTOn]}
-                                            numberOfLines={1}
-                                        >
-                                            {item.name}
-                                        </Text>
+                                    <TouchableOpacity style={[styles.dropdownItem, isActive && styles.dropdownItemOn]} onPress={() => switchSite(item)} activeOpacity={0.7}>
+                                        <Text style={[styles.dropdownItemT, isActive && styles.dropdownItemTOn]} numberOfLines={1}>{item.name}</Text>
                                         {isActive && <Text style={styles.dropdownCheck}>{' ✓'}</Text>}
                                     </TouchableOpacity>
                                 );
@@ -161,40 +187,32 @@ export default function Sites({ config }: { config: CatConfig }) {
                 </TouchableOpacity>
             </Modal>
 
-            {/* ═══════ 分类快速入口 ═══════ */}
+            {/* ═══════ 分类 Tab 栏 ═══════ */}
             {classes.length > 0 && (
-                <View style={styles.clsWrap}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clsScroll}>
-                        {classes.slice(0, 20).map(cl => (
-                            <TouchableOpacity key={String(cl.type_id)} style={styles.clsChip} onPress={() => goCategory(cl)}>
-                                <Text style={styles.clsChipT}>{cl.type_name}</Text>
-                            </TouchableOpacity>
-                        ))}
+                <View style={styles.tabBar}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
+                        {classes.map(cl => {
+                            const isActive = String(cl.type_id) === (activeTab || String(classes[0]?.type_id));
+                            return (
+                                <TouchableOpacity key={String(cl.type_id)} style={styles.tabItem} onPress={() => switchTab(cl)} activeOpacity={0.7}>
+                                    <Text style={[styles.tabLabel, isActive && styles.tabLabelOn]}>{cl.type_name}</Text>
+                                    {isActive && <View style={styles.tabUnderline} />}
+                                </TouchableOpacity>
+                            );
+                        })}
                     </ScrollView>
                 </View>
             )}
 
-            {/* ═══════ 内容标题 ═══════ */}
-            <View style={styles.secHead}>
-                <Text style={styles.secTitle}>
-                    {recs.length > 0 ? '热门推荐' : '分类内容'}
-                </Text>
-                {activeSite && classes.length > 0 && (
-                    <TouchableOpacity onPress={() => nav.push('Category', { site: activeSite })}>
-                        <Text style={styles.secMore}>全部分类 ›</Text>
-                    </TouchableOpacity>
-                )}
-            </View>
-
-            {/* ═══════ 内容网格 / 状态 ═══════ */}
+            {/* ═══════ 内容网格 ═══════ */}
             {loading ? (
-                <View style={styles.center}><ActivityIndicator color="#7aa2ff" /></View>
+                <View style={styles.center}><ActivityIndicator color="#7aa2ff" size="large" /></View>
             ) : recs.length === 0 ? (
                 <View style={styles.center}>
                     <Text style={styles.msg}>{msg || '暂无内容'}</Text>
-                    {activeSite && classes.length > 0 && (
-                        <TouchableOpacity style={styles.goAllBtn} onPress={() => nav.push('Category', { site: activeSite })}>
-                            <Text style={styles.goAllBtnT}>全部分类 ›</Text>
+                    {activeSite && classes.length > 0 && !activeTab && (
+                        <TouchableOpacity style={styles.goAllBtn} onPress={() => classes[0] && switchTab(classes[0])}>
+                            <Text style={styles.goAllBtnT}>浏览内容 ›</Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -207,14 +225,23 @@ export default function Sites({ config }: { config: CatConfig }) {
                     columnWrapperStyle={{ gap: GAP }}
                     showsVerticalScrollIndicator={false}
                     renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={[styles.card, { width: W }]}
-                            onPress={() => activeSite && nav.push('Detail', { site: activeSite, vodId: item.vod_id })}
-                            activeOpacity={0.7}
-                        >
-                            <Image source={{ uri: item.vod_pic }} style={[styles.pic, { width: W, height: W * 1.4 }]} />
+                        <TouchableOpacity style={[styles.card, { width: W }]} onPress={() => goDetail(item)} activeOpacity={0.8}>
+                            <View style={[styles.picWrap, { width: W, height: W * 1.4 }]}>
+                                <Image source={{ uri: item.vod_pic }} style={styles.pic} />
+                                {/* 评分标签 */}
+                                {!!item.vod_score && (
+                                    <View style={[styles.scoreBadge, { backgroundColor: scoreColor(item.vod_score) }]}>
+                                        <Text style={styles.scoreText}>{item.vod_score}</Text>
+                                    </View>
+                                )}
+                                {/* 备注标签（如 更新到XX集） */}
+                                {!!item.vod_remarks && !item.vod_score && (
+                                    <View style={styles.remarkBadge}>
+                                        <Text style={styles.remarkText} numberOfLines={1}>{item.vod_remarks}</Text>
+                                    </View>
+                                )}
+                            </View>
                             <Text style={styles.vn} numberOfLines={1}>{item.vod_name}</Text>
-                            {!!item.vod_remarks && <Text style={styles.rm} numberOfLines={1}>{item.vod_remarks}</Text>}
                         </TouchableOpacity>
                     )}
                     ListFooterComponent={<View style={{ height: 20 }} />}
@@ -227,107 +254,98 @@ export default function Sites({ config }: { config: CatConfig }) {
 const styles = StyleSheet.create({
     c: { flex: 1, backgroundColor: '#0b0b0f' },
 
-    /* ── 站点下拉选择器 ── */
-    siteBar: {
-        height: 48,
+    /* ── 顶部站点信息栏 ── */
+    header: {
+        height: 50,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: '#1d1d25',
-        justifyContent: 'center',
         backgroundColor: '#0f0f14',
-        paddingHorizontal: 14,
     },
-    siteDropdownBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 18,
-        backgroundColor: '#1a1a24',
-    },
-    siteDropdownText: {
-        color: '#e6e8ef',
-        fontSize: 14,
-        fontWeight: '600',
-        maxWidth: Dimensions.get('window').width - 100,
-    },
-    siteDropdownArrow: {
-        color: '#9aa0ad',
-        fontSize: 12,
-        marginLeft: 4,
-    },
-
-    /* ── 下拉弹窗 ── */
-    dropdownOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.55)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-    },
-    dropdownPanel: {
-        width: '100%',
-        maxHeight: '70%',
-        backgroundColor: '#1a1a24',
+    headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+    siteIcon: {
+        width: 28,
+        height: 28,
         borderRadius: 14,
-        overflow: 'hidden',
-    },
-    dropdownTitle: {
-        color: '#9aa0ad',
-        fontSize: 13,
-        paddingHorizontal: 16,
-        paddingTop: 14,
-        paddingBottom: 8,
-    },
-    dropdownList: {
-        maxHeight: 400,
-    },
-    dropdownItem: {
-        flexDirection: 'row',
+        backgroundColor: '#7aa2ff',
         alignItems: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: '#2a2a35',
+        justifyContent: 'center',
     },
-    dropdownItemOn: {
-        backgroundColor: '#2a2f45',
+    siteIconT: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    headerTitle: { color: '#e6e8ef', fontSize: 16, fontWeight: '600', marginLeft: 8, flex: 1 },
+    headerArrow: { color: '#9aa0ad', fontSize: 12, marginRight: 8 },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    headerIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#1a1a24', alignItems: 'center', justifyContent: 'center' },
+    headerIcon: { fontSize: 16 },
+
+    /* ── 站点下拉 ── */
+    dropdownOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    dropdownPanel: { width: '100%', maxHeight: '70%', backgroundColor: '#1a1a24', borderRadius: 14, overflow: 'hidden' },
+    dropdownTitle: { color: '#9aa0ad', fontSize: 13, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+    dropdownList: { maxHeight: 400 },
+    dropdownItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2a2a35' },
+    dropdownItemOn: { backgroundColor: '#2a2f45' },
+    dropdownItemT: { color: '#cfd2dc', fontSize: 14, flex: 1 },
+    dropdownItemTOn: { color: '#7aa2ff', fontWeight: '600' },
+    dropdownCheck: { color: '#7aa2ff', fontSize: 14, fontWeight: '700' },
+
+    /* ── 分类 Tab 栏 ── */
+    tabBar: { height: 42, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#1d1d25', justifyContent: 'center', backgroundColor: '#0f0f14' },
+    tabScroll: { flexDirection: 'row', paddingHorizontal: 8, gap: 0, alignItems: 'flex-end' },
+    tabItem: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    dropdownItemT: {
-        color: '#cfd2dc',
-        fontSize: 14,
-        flex: 1,
-    },
-    dropdownItemTOn: {
-        color: '#7aa2ff',
-        fontWeight: '600',
-    },
-    dropdownCheck: {
-        color: '#7aa2ff',
-        fontSize: 14,
-        fontWeight: '700',
+    tabLabel: { color: '#8a8f9c', fontSize: 14 },
+    tabLabelOn: { color: '#e6e8ef', fontSize: 14, fontWeight: '600' },
+    tabUnderline: {
+        position: 'absolute',
+        bottom: 0,
+        left: 14,
+        right: 14,
+        height: 3,
+        borderRadius: 1.5,
+        backgroundColor: '#7aa2ff',
     },
 
-    /* ── 分类快速入口 ── */
-    clsWrap: { maxHeight: 44, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#1d1d25', justifyContent: 'center' },
-    clsScroll: { flexDirection: 'row', paddingHorizontal: 10, gap: 6, alignItems: 'center' },
-    clsChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12, backgroundColor: '#16161d' },
-    clsChipT: { color: '#b9bdc8', fontSize: 12 },
-
-    /* ── 内容标题 ── */
-    secHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8 },
-    secTitle: { color: '#e6e8ef', fontSize: 16, fontWeight: '600' },
-    secMore: { color: '#7aa2ff', fontSize: 12 },
-
-    /* ── 空状态 ── */
+    /* ── 内容网格 ── */
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
     msg: { color: '#777', fontSize: 13, textAlign: 'center' },
     goAllBtn: { marginTop: 16, paddingHorizontal: 22, paddingVertical: 10, borderRadius: 20, backgroundColor: '#2a2f45' },
     goAllBtnT: { color: '#7aa2ff', fontSize: 14, fontWeight: '600' },
 
-    /* ── 内容卡片 ── */
-    card: { marginBottom: GAP, borderRadius: 8, overflow: 'hidden', backgroundColor: '#12121a', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
-    pic: { borderRadius: 8, backgroundColor: '#16161d' },
-    vn: { color: '#e6e8ef', fontSize: 12, marginTop: 4, marginLeft: 4, marginRight: 4 },
-    rm: { color: '#ff9f43', fontSize: 10, marginTop: 1, marginLeft: 4, marginRight: 4, marginBottom: 4 },
+    /* ── 卡片 ── */
+    card: { marginBottom: GAP, borderRadius: 8, overflow: 'hidden', backgroundColor: '#12121a' },
+    picWrap: { borderRadius: 8, overflow: 'hidden', backgroundColor: '#16161d', position: 'relative' },
+    pic: { width: '100%', height: '100%', resizeMode: 'cover' },
+    vn: { color: '#e6e8ef', fontSize: 12, marginTop: 6, marginLeft: 4, marginRight: 4, marginBottom: 4 },
+
+    /* ── 评分标签 ── */
+    scoreBadge: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    scoreText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+
+    /* ── 备注标签 ── */
+    remarkBadge: {
+        position: 'absolute',
+        bottom: 6,
+        left: 6,
+        right: 6,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    remarkText: { color: '#fff', fontSize: 10 },
 });
