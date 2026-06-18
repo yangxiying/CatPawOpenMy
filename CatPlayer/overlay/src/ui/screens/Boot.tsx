@@ -78,16 +78,9 @@ export default function Boot() {
                     </TouchableOpacity>
                 )}
                 {parsing && <ActivityIndicator size="small" color="#7aa2ff" style={{marginHorizontal:12}} />}
-                {parsed && !NodeService.isWebsiteSource && (
+                {parsed && (
                     <TouchableOpacity style={[styles.btn, styles.goBtn]} onPress={() => {
                         nav.replace('Sites', { config: configRef.current });
-                    }}>
-                        <Text style={styles.btnt}>进入</Text>
-                    </TouchableOpacity>
-                )}
-                {NodeService.isWebsiteSource && ready && (
-                    <TouchableOpacity style={[styles.btn, styles.goBtn]} onPress={() => {
-                        nav.replace('Sites', { config: null });
                     }}>
                         <Text style={styles.btnt}>进入</Text>
                     </TouchableOpacity>

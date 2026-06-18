@@ -134,7 +134,15 @@ try {
     var innerCode = typeof globalThis.websiteBundle === 'function' ? globalThis.websiteBundle() : globalThis.websiteBundle;
     _log('innerCode len=' + innerCode.length);
     // inner bundle 内部 renderClient 自渲染到 document.getElementById("app")
-    var __fn2 = new Function('require','module','exports','__filename','__dirname', innerCode + ';globalThis.__WS=module.exports;');
+    // 注意: 远程 bundle 的内码通常包裹在 IIFE((function(){...})()) 中，
+    // IIFE 内部创建 const module = { exports }, 自己设 module.exports。
+    // 如果外层再追加 ';globalThis.__WS=module.exports', 读到的是外层空 module。
+    // 修复: 在 IIFE 内部每次 module.exports= 之后追加赋值给 globalThis.__WS。
+    var patchedCode = innerCode.replace(
+        /(module\s*\.\s*exports\s*=\s*)([^;]+)(;)/g,
+        '$1$2$3 globalThis.__WS = module.exports;'
+    );
+    var __fn2 = new Function('require','module','exports','__filename','__dirname', patchedCode);
     var __m2 = { exports: {} };
     __fn2(__req, __m2, __m2.exports, '/main.js', '/');
     _log('inner bundle executed');

@@ -14,25 +14,9 @@ type RecItem = { vod_id: string; vod_name: string; vod_pic: string; vod_remarks?
  * 首页：顶部横向站点选择器 + 分类快速入口 + 热门推荐网格。
  * 参考 App 截图布局。
  */
-import { NodeWebView } from '../../node/NodeService';
 
 export default function Sites({ config }: { config: CatConfig }) {
     const nav = useNav();
-
-    if (!config && NodeService.isWebsiteSource) {
-        return (
-            <View style={{ flex: 1 }}>
-                <NodeWebView visible={true} />
-                <TouchableOpacity
-                    style={{ position: 'absolute', bottom: 40, right: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' }}
-                    onPress={() => nav.push('Settings')}
-                    activeOpacity={0.7}
-                >
-                    <Text style={{ color: '#fff', fontSize: 20 }}>{'⚙'}</Text>
-                </TouchableOpacity>
-            </View>
-        );
-    }
 
     const sites: Site[] = config?.video?.sites || [];
     const [activeApi, setActiveApi] = useState<string>(sites[0]?.api || '');
