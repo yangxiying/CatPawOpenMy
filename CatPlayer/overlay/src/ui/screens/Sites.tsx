@@ -30,6 +30,12 @@ export default function Sites({ config }: { config: CatConfig }) {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const loadingRef = useRef(false);
+    const [fetchedConfig, setFetchedConfig] = useState<CatConfig | null>(null);
+
+    // Tab 切换回来 config 丢失时自动拉取
+    const effectiveConfig = fetchedConfig || config;
+    const effectiveSites: Site[] = effectiveConfig?.video?.sites || [];
+    const hasSites = effectiveSites.length > 0;
 
     /** 智能解析 home 返回，兜底尝试加载分类内容 */
     const resolveContent = useCallback(async (api: string, home: any): Promise<{items: any[], cls: any[], tabId: string}> => {
@@ -121,6 +127,26 @@ export default function Sites({ config }: { config: CatConfig }) {
         loadSite(activeApi);
     }, [activeApi, loadSite]);
 
+    // Tab 切换回来 config 丢失时自动从服务器拉取
+    useEffect(() => {
+        if (hasSites) return;
+        NodeService?.log?.('[Sites] no sites in config, fetching from server...');
+        CatApi.getConfig().then(cfg => {
+            if (cfg?.video?.sites?.length) {
+                NodeService?.log?.('[Sites] auto-fetched ' + cfg.video.sites.length + ' sites');
+                setFetchedConfig(cfg);
+            }
+        }).catch(e => NodeService?.log?.('[Sites] auto-fetch failed: ' + e));
+    }, []);
+
+    // 自动获取到 config 后初始化第一个站点
+    useEffect(() => {
+        if (!hasSites) return;
+        if (activeSite) return;
+        setActiveSite(effectiveSites[0]);
+        setActiveApi(effectiveSites[0].api);
+    }, [hasSites, effectiveSites[0]?.api]);
+
     const switchSite = useCallback((s: Site) => {
         setShowDropdown(false);
         setActiveSite(s);
@@ -202,7 +228,7 @@ export default function Sites({ config }: { config: CatConfig }) {
                     <View style={styles.dropdownPanel}>
                         <Text style={styles.dropdownTitle}>切换站点</Text>
                         <FlatList
-                            data={sites}
+                            data={effectiveSites}
                             keyExtractor={item => item.api}
                             style={styles.dropdownList}
                             showsVerticalScrollIndicator={false}
