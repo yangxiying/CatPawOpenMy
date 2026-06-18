@@ -16,16 +16,19 @@ APP_DIR="$HERE/app"
 NAME="CatPlayer"
 RN_VERSION="0.74.7"
 
-if [ ! -d "$APP_DIR" ]; then
+if [ ! -d "$APP_DIR" ] || [ ! -f "$APP_DIR/package.json" ]; then
     echo "▶ generating RN shell (react-native $RN_VERSION) …"
+    echo "  node: $(node -v)  npm: $(npm -v)"
     npm cache clean --force 2>/dev/null || true
-    npx "@react-native-community/cli@12.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION"
+    npx "@react-native-community/cli@12.3.7" init CatPlayer --directory app --skip-install --version "$RN_VERSION" --verbose 2>&1 || true
+    echo "  app/ contents after npx init:"
+    ls -la "$APP_DIR" 2>/dev/null || echo "  (app dir does not exist)"
 fi
 
 if [ ! -f "$APP_DIR/package.json" ]; then
     echo "❌ ERROR: $APP_DIR/package.json not found after npx init"
-    echo "   Listing CatPlayer directory:"
-    ls -la "$(dirname "$APP_DIR")" || true
+    echo "  app/ contents:"
+    ls -la "$APP_DIR" 2>/dev/null || echo "  (app dir does not exist)"
     exit 1
 fi
 
