@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
     View, Text, FlatList, TouchableOpacity, Image,
-    ActivityIndicator, ScrollView, StyleSheet, Dimensions, Modal,
+    ActivityIndicator, ScrollView, StyleSheet, Dimensions, Modal, Clipboard,
 } from 'react-native';
 import { useNav } from '../App';
 import { CatApi, Site, CatConfig } from '../../api/CatApi';
@@ -34,6 +34,15 @@ export default function Sites({ config }: { config: CatConfig }) {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const loadingRef = useRef(false);
+    const [logs, setLogs] = useState<string[]>([]);
+    const [showLogs, setShowLogs] = useState(false);
+    const [logCopied, setLogCopied] = useState(false);
+
+    // 订阅服务端日志
+    useEffect(() => {
+        const off = NodeService.onLog(m => setLogs(l => [...l.slice(-99), m]));
+        return off;
+    }, []);
 
     /** 智能解析 home 返回，兜底尝试加载分类内容 */
     const resolveContent = useCallback(async (api: string, home: any): Promise<{items: any[], cls: any[], tabId: string}> => {
@@ -307,6 +316,41 @@ export default function Sites({ config }: { config: CatConfig }) {
                     ListFooterComponent={<View style={{ height: 20 }} />}
                 />
             )}
+
+            {/* ═══════ 浮动日志按钮 ═══════ */}
+            <TouchableOpacity style={styles.logFloating} onPress={() => setShowLogs(true)} activeOpacity={0.7}>
+                <Text style={styles.logFloatingT}>日志</Text>
+            </TouchableOpacity>
+
+            {/* ═══════ 日志弹窗 ═══════ */}
+            <Modal visible={showLogs} transparent animationType="slide" onRequestClose={() => setShowLogs(false)}>
+                <View style={styles.logOverlay}>
+                    <View style={styles.logPanel}>
+                        <View style={styles.logHeader}>
+                            <Text style={styles.logTitle}>运行日志</Text>
+                            <View style={styles.logHeaderRight}>
+                                <TouchableOpacity style={styles.logCopyBtn} onPress={async () => {
+                                    await Clipboard.setString(logs.join('\n'));
+                                    setLogCopied(true);
+                                    setTimeout(() => setLogCopied(false), 1500);
+                                }}>
+                                    <Text style={styles.logCopyT}>{logCopied ? '已复制' : '复制日志'}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.logCloseBtn} onPress={() => setShowLogs(false)}>
+                                    <Text style={styles.logCloseT}>关闭</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                        <ScrollView style={styles.logScroll} contentContainerStyle={{ padding: 10 }}>
+                            {logs.length === 0 ? (
+                                <Text style={styles.logEmpty}>暂无日志</Text>
+                            ) : (
+                                logs.map((l, i) => <Text key={i} style={styles.logLine}>• {l}</Text>)
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -353,4 +397,28 @@ const styles = StyleSheet.create({
     scoreText: { color: '#fff', fontSize: 11, fontWeight: '700' },
     remarkBadge: { position: 'absolute', bottom: 6, left: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     remarkText: { color: '#fff', fontSize: 10 },
+
+    /* ── 浮动日志按钮 ── */
+    logFloating: {
+        position: 'absolute', bottom: 12, right: 12,
+        width: 44, height: 44, borderRadius: 22,
+        backgroundColor: 'rgba(42,47,69,0.92)',
+        alignItems: 'center', justifyContent: 'center',
+        elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 4,
+    },
+    logFloatingT: { color: '#7aa2ff', fontSize: 11, fontWeight: '700' },
+
+    /* ── 日志弹窗 ── */
+    logOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+    logPanel: { backgroundColor: '#14141b', borderTopLeftRadius: 14, borderTopRightRadius: 14, maxHeight: '75%', minHeight: 200 },
+    logHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#23232b' },
+    logTitle: { color: '#e6e8ef', fontSize: 15, fontWeight: '600' },
+    logHeaderRight: { flexDirection: 'row', gap: 8 },
+    logCopyBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: '#2a4535' },
+    logCopyT: { color: '#7aa2ff', fontSize: 12 },
+    logCloseBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: '#2a2f45' },
+    logCloseT: { color: '#9aa0ad', fontSize: 12 },
+    logScroll: { maxHeight: 400 },
+    logEmpty: { color: '#666', fontSize: 12, textAlign: 'center', paddingVertical: 30 },
+    logLine: { color: '#8a8f9c', fontSize: 11, lineHeight: 16 },
 });
