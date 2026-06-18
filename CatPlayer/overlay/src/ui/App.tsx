@@ -8,6 +8,7 @@ import Player from './screens/Player';
 import Favorites from './screens/Favorites';
 import History from './screens/History';
 import Settings from './screens/Settings';
+import Search from './screens/Search';
 import TabBar from './components/TabBar';
 import { NodeWebView } from '../node/NodeService';
 import NodeService from '../node/NodeService';
@@ -20,7 +21,7 @@ export type Nav = {
 const NavContext = createContext<Nav>(null as any);
 export const useNav = () => useContext(NavContext);
 
-const SCREENS: Record<string, React.ComponentType<any>> = { Boot, Sites, Category, Detail, Player, Favorites, History, Settings };
+const SCREENS: Record<string, React.ComponentType<any>> = { Boot, Sites, Category, Detail, Player, Favorites, History, Settings, Search };
 
 type Route = { name: string; params?: any };
 
@@ -119,6 +120,7 @@ function titleOf(r: Route) {
         case 'Favorites': return '收藏';
         case 'History': return '历史';
         case 'Settings': return '设置';
+        case 'Search': return '搜索';
         default: return 'CatPlayer';
     }
 }
