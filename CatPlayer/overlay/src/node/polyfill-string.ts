@@ -292,21 +292,49 @@ function httpRequestPolyfill(url, options) {
             }));
             PENDING_REQUESTS.set(reqId, {
                 resolve: (bodyStr) => {
-                    // 将字符串包装为 IncomingMessage 兼容对象（支持 setEncoding/on('data')/on('end')/pipe）
+                    // 将字符串包装为 IncomingMessage 兼容对象（完整 Readable stream 接口）
                     var buf = bodyStr || '';
-                    var idx = 0;
                     var inRes = {
                         statusCode: 200,
                         headers: {},
                         _data: buf,
+                        // Readable stream 方法 (来自 http.IncomingMessage)
                         setEncoding: function(enc) {},
+                        resume: function() { return inRes; },
+                        pause: function() {},
+                        isPaused: function() { return false; },
+                        read: function(size) { return buf.length ? buf : null; },
+                        pipe: function(dest) { dest.end(buf); return dest; },
+                        unpipe: function() {},
+                        unshift: function() {},
+                        wrap: function() {},
+                        destroy: function() {},
+                        destroySoon: function() {},
+                        addListener: function(ev, cb) { return inRes.on(ev, cb); },
+                        removeListener: function(ev, cb) { return inRes; },
+                        removeAllListeners: function() { return inRes; },
+                        listeners: function(ev) { return []; },
+                        listenerCount: function(ev) { return 0; },
+                        eventNames: function() { return []; },
+                        getMaxListeners: function() { return 10; },
+                        setMaxListeners: function() { return inRes; },
                         on: function(ev, cb) {
-                            if (ev === 'data' && buf.length > 0) { cb(buf); idx = buf.length; }
+                            if (ev === 'data' && buf.length > 0) { cb(buf); }
                             if (ev === 'end') setTimeout(cb, 0);
+                            if (ev === 'close') setTimeout(cb, 0);
+                            if (ev === 'error') { /* ignore, no error */ }
+                            if (ev === 'readable') { /* ignore */ }
                             return inRes;
                         },
-                        pipe: function(dest) { dest.end(buf); return dest; },
-                        destroy: function() {},
+                        once: function(ev, cb) {
+                            var wrapped = function() { cb.apply(this, arguments); };
+                            inRes.on(ev, wrapped);
+                            return inRes;
+                        },
+                        emit: function() { return true; },
+                        // http.ServerResponse 兼容
+                        write: function() {},
+                        end: function() {},
                     };
                     req.emit('response', inRes);
                 },
