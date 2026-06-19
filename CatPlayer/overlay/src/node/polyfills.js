@@ -690,6 +690,7 @@ window.addEventListener('message', (event) => {
     req.socket = {};
     req.connection = {};
     req._body = bodyContent;
+    req.setEncoding = function(enc) {}; // 兼容 stream consumers
 
     // 构造 res 对象（兼容 Fastify 使用的 ServerResponse 接口）
     let statusCode = 200;
