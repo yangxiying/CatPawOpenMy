@@ -711,7 +711,26 @@ window.addEventListener('message', (event) => {
     req.socket = {};
     req.connection = {};
     req._body = bodyContent;
-    req.setEncoding = function(enc) {}; // 兼容 stream consumers
+    // 兼容 stream consumers — IncomingMessage 完整接口
+    req.setEncoding = function(enc) {};
+    req.resume = function() { return req; };
+    req.pause = function() {};
+    req.isPaused = function() { return false; };
+    req.read = function(size) { return req._body ? req._body : null; };
+    req.pipe = function(dest) { dest.end(req._body || ''); return dest; };
+    req.unpipe = function() {};
+    req.unshift = function() {};
+    req.wrap = function() {};
+    req.destroy = function() {};
+    req.destroySoon = function() {};
+    req.addListener = req.on.bind(req);
+    req.removeListener = function(ev, cb) { if (req._events) req.off(ev, cb); return req; };
+    req.removeAllListeners = function(ev) { if (req._events) { if (ev) delete req._events[ev]; else req._events = {}; } return req; };
+    req.listeners = function(ev) { return (req._events && req._events[ev]) || []; };
+    req.listenerCount = function(ev) { return req.listeners(ev).length; };
+    req.eventNames = function() { return Object.keys(req._events || {}); };
+    req.getMaxListeners = function() { return 10; };
+    req.setMaxListeners = function() { return req; };
 
     // 构造 res 对象（兼容 Fastify 使用的 ServerResponse 接口）
     let statusCode = 200;
