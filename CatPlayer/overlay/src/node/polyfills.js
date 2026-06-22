@@ -332,6 +332,14 @@ function httpRequestPolyfill(url, options) {
                 body: req._body || null,
             }));
             _log('[proxy] req #' + reqId + ' ' + req.method + ' ' + req.url);
+            // 打印关键头信息（帮助排查 UC 网盘鉴权问题）
+            var _hk = ['x-pan-client-id','x-pan-tm','x-pan-token','cookie','authorization','user-agent'];
+            var _hd = [];
+            for (var _i = 0; _i < _hk.length; _i++) {
+                var _v = req.headers[_hk[_i]];
+                if (_v !== undefined && _v !== null) _hd.push(_hk[_i] + '=' + _v.slice(0, 30));
+            }
+            if (_hd.length > 0) _log('[proxy] req #' + reqId + ' headers: ' + _hd.join(', '));
             PENDING_REQUESTS.set(reqId, {
                 resolve: (bodyStr, statusCode, headers) => {
                     // 将字符串包装为 IncomingMessage 兼容对象（完整 Readable stream 接口）
@@ -468,8 +476,61 @@ function cryptoPolyfill() {
             return Buffer.from(bytes);
         },
         randomUUID: () => globalThis.crypto.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx'.replace(/x/g, () => (Math.random() * 16 | 0).toString(16)),
-        createCipheriv: () => { throw new Error('createCipheriv polyfill not implemented'); },
-        createDecipheriv: () => { throw new Error('createDecipheriv polyfill not implemented'); },
+        createCipheriv: (algorithm, key, iv) => {
+            // 简易实现（仅用于对称加密填充，实际加密用 finalAsync）
+            const algoMap = { 'aes-256-cbc': 'AES-CBC', 'aes-128-cbc': 'AES-CBC', 'aes-256-gcm': 'AES-GCM', 'aes-128-gcm': 'AES-GCM' };
+            const webAlgo = algoMap[(algorithm || '').toLowerCase()];
+            if (!webAlgo) throw new Error('createCipheriv: unsupported algorithm ' + algorithm);
+            return {
+                _algo: webAlgo,
+                _key: typeof key === 'string' ? new TextEncoder().encode(key) : key,
+                _iv: typeof iv === 'string' ? new TextEncoder().encode(iv) : iv,
+                _data: null,
+                update: function(data, inEnc, outEnc) { this._data = data; return this; },
+                final: function(outEnc) { throw new Error('use async finalAsync instead'); },
+                setAutoPadding: function() {},
+                async finalAsync() {
+                    if (!subtle) throw new Error('Web Crypto not available');
+                    if (!this._data) throw new Error('no data to encrypt');
+                    const k = await subtle.importKey('raw', this._key, { name: this._algo }, false, ['encrypt']);
+                    const encrypted = await subtle.encrypt({ name: this._algo, iv: this._iv }, k, this._data);
+                    return Buffer.from(new Uint8Array(encrypted));
+                },
+            };
+        },
+        createDecipheriv: (algorithm, key, iv) => {
+            const algoMap = { 'aes-256-cbc': 'AES-CBC', 'aes-128-cbc': 'AES-CBC', 'aes-256-gcm': 'AES-GCM', 'aes-128-gcm': 'AES-GCM' };
+            const webAlgo = algoMap[(algorithm || '').toLowerCase()];
+            if (!webAlgo) throw new Error('createDecipheriv: unsupported algorithm ' + algorithm);
+            return {
+                _algo: webAlgo,
+                _key: typeof key === 'string' ? new TextEncoder().encode(key) : key,
+                _iv: typeof iv === 'string' ? new TextEncoder().encode(iv) : iv,
+                _data: null,
+                update: function(data, inEnc, outEnc) {
+                    // 支持 hex/base64 输入编码
+                    if (inEnc === 'hex' && typeof data === 'string') {
+                        this._data = new Uint8Array(data.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+                    } else if (inEnc === 'base64' && typeof data === 'string') {
+                        var bin = atob(data);
+                        this._data = new Uint8Array(bin.length);
+                        for (var i = 0; i < bin.length; i++) this._data[i] = bin.charCodeAt(i);
+                    } else {
+                        this._data = data;
+                    }
+                    return this;
+                },
+                final: function(outEnc) { throw new Error('use async finalAsync instead'); },
+                setAutoPadding: function() {},
+                async finalAsync() {
+                    if (!subtle) throw new Error('Web Crypto not available');
+                    if (!this._data) throw new Error('no data to decrypt');
+                    const k = await subtle.importKey('raw', this._key, { name: this._algo }, false, ['decrypt']);
+                    const decrypted = await subtle.decrypt({ name: this._algo, iv: this._iv }, k, this._data);
+                    return Buffer.from(new Uint8Array(decrypted));
+                },
+            };
+        },
         pbkdf2: () => { throw new Error('pbkdf2 polyfill not implemented'); },
         scrypt: () => { throw new Error('scrypt polyfill not implemented'); },
     };
