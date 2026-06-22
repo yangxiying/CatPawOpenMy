@@ -277,6 +277,7 @@ try {
 `);
                     } catch (e: any) {
                         const pid = msg.proxyId || msg.reqId;
+                        onLog?.(`[proxy] fetch FAILED url=${msg.url} method=${msg.method} err=${String(e)}`);
                         wvRef.current?.injectJavaScript(`
 (() => {
     var p = window.__PROXY && window.__PROXY.pending && window.__PROXY.pending[${JSON.stringify(pid)}];
