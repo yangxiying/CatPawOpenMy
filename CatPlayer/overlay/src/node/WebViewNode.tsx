@@ -251,6 +251,8 @@ try {
                 break;
             case 'proxyRequest':
                 (async () => {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
                     try {
                         const url = msg.url;
                         const method = msg.method || 'GET';
@@ -259,8 +261,10 @@ try {
                         const resp = await fetch(url, {
                             method,
                             headers, // 使用原始 headers，不做额外修改
+                            signal: controller.signal,
                             body: method !== 'GET' && method !== 'HEAD' && body ? body : undefined,
                         });
+                        clearTimeout(timeoutId);
                         const respStatus = resp.status;
                         const respBody = await resp.text();
                         const respHeaders: Record<string, string> = {};
@@ -276,6 +280,7 @@ try {
 })();
 `);
                     } catch (e: any) {
+                        clearTimeout(timeoutId);
                         const pid = msg.proxyId || msg.reqId;
                         onLog?.(`[proxy] fetch FAILED url=${msg.url} method=${msg.method} err=${String(e)}`);
                         wvRef.current?.injectJavaScript(`
