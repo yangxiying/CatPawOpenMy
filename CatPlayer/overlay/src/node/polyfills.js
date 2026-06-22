@@ -331,6 +331,7 @@ function httpRequestPolyfill(url, options) {
                 headers: req.headers,
                 body: req._body || null,
             }));
+            _log('[proxy] req #' + reqId + ' ' + req.method + ' ' + req.url);
             PENDING_REQUESTS.set(reqId, {
                 resolve: (bodyStr, statusCode, headers) => {
                     // 将字符串包装为 IncomingMessage 兼容对象（完整 Readable stream 接口）
