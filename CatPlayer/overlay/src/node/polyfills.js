@@ -283,7 +283,12 @@ function httpRequestPolyfill(url, options) {
     req.method = options?.method || 'GET';
     // 构造完整 URL：支持 http.request(url) 字符串、URL 对象、options 对象三种形式
     if (typeof url === 'string') {
-        req.url = url;
+        // 相对路径（以 / 开头）→ 补上默认 base（指向本地 server）
+        if (url.charAt(0) === '/') {
+            req.url = 'http://127.0.0.1:18080' + url;
+        } else {
+            req.url = url;
+        }
     } else if (url && url.href) {
         req.url = url.href;
     } else {
@@ -291,7 +296,10 @@ function httpRequestPolyfill(url, options) {
         const opts = url || options || {};
         var protocol = opts.protocol || 'http:';
         var hostname = opts.hostname || opts.host || '127.0.0.1';
-        var port = opts.port || (protocol === 'https:' ? 443 : 80);
+        var port = opts.port;
+        if (port === undefined || port === null || port === '') {
+            port = (protocol === 'https:' || protocol === 'https') ? 443 : 80;
+        }
         var path = opts.path || '/';
         req.url = protocol + '//' + hostname + (port ? ':' + port : '') + path;
     }
