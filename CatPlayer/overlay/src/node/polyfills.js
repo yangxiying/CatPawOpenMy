@@ -39,6 +39,18 @@ globalThis.process = globalThis.process || {
     // 如果缺失，axios 会认为当前是浏览器环境，使用 XMLHttpRequest 适配器，
     // 导致 HTTP 请求直接从 WebView 发出，绕过 proxy，遇到 CORS 限制时失败（ERR_NETWORK）。
     [Symbol.toStringTag]: 'process',
+    hrtime: (() => {
+        const _origin = (typeof performance !== 'undefined' ? performance : Date).now();
+        const fn = (prev) => {
+            const now = (typeof performance !== 'undefined' ? performance : Date).now() - _origin;
+            const sec = Math.floor(now / 1000);
+            const ns = Math.floor((now % 1000) * 1e6);
+            if (prev) return [sec - prev[0], ns - prev[1]];
+            return [sec, ns];
+        };
+        fn.bigint = () => BigInt(Math.floor(((typeof performance !== 'undefined' ? performance : Date).now() - _origin) * 1e6));
+        return fn;
+    })(),
 };
 // 禁用 XMLHttpRequest 以强制 axios 等库使用 Node.js http 适配器。
 // 在 WebView 中 XMLHttpRequest 可用，axios 会优先选择它而非 http.request，
