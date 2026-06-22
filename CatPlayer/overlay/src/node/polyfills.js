@@ -39,6 +39,15 @@ globalThis.process = globalThis.process || {
     // 如果缺失，axios 会认为当前是浏览器环境，使用 XMLHttpRequest 适配器，
     // 导致 HTTP 请求直接从 WebView 发出，绕过 proxy，遇到 CORS 限制时失败（ERR_NETWORK）。
     [Symbol.toStringTag]: 'process',
+};
+// 禁用 XMLHttpRequest 以强制 axios 等库使用 Node.js http 适配器。
+// 在 WebView 中 XMLHttpRequest 可用，axios 会优先选择它而非 http.request，
+// 导致 HTTP 请求直接从 WebView 的浏览器引擎发出，遇到 CORS/SSL 限制。
+// 保存原始引用以备 polyfill 内部 fallback 使用。
+var _origXMLHttpRequest = globalThis.XMLHttpRequest;
+globalThis.XMLHttpRequest = undefined;
+try { window.XMLHttpRequest = undefined; } catch(e) {}
+try { globalThis.XMLHttpRequest = undefined; } catch(e) {}
     hrtime: (() => {
         const _origin = (typeof performance !== 'undefined' ? performance : Date).now();
         const fn = (prev) => {
