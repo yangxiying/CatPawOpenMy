@@ -34,6 +34,11 @@ globalThis.process = globalThis.process || {
     exit: () => {},
     stdout: { write: (s) => { console.log(s); } },
     stderr: { write: (s) => { console.error(s); } },
+    // [Symbol.toStringTag] 使 Object.prototype.toString.call(process) 返回 '[object process]'
+    // 这对于 axois 等库检测 Node.js 环境至关重要。
+    // 如果缺失，axios 会认为当前是浏览器环境，使用 XMLHttpRequest 适配器，
+    // 导致 HTTP 请求直接从 WebView 发出，绕过 proxy，遇到 CORS 限制时失败（ERR_NETWORK）。
+    [Symbol.toStringTag]: 'process',
     hrtime: (() => {
         const _origin = (typeof performance !== 'undefined' ? performance : Date).now();
         const fn = (prev) => {
