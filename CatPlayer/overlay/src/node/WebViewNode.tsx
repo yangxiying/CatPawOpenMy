@@ -272,6 +272,8 @@ try {
                         const pid = msg.proxyId || msg.reqId;
                         const safeBody = JSON.stringify(respBody);
                         const safeHeaders = JSON.stringify(respHeaders);
+                        const bodyPreview = respBody.length > 200 ? respBody.slice(0, 200) + '...' : respBody;
+                        onLog?.(`[proxy] resp #${msg.reqId} status=${respStatus} len=${respBody.length} preview=${bodyPreview}`);
                         wvRef.current?.injectJavaScript(`
 (() => {
     var p = window.__PROXY && window.__PROXY.pending && window.__PROXY.pending[${JSON.stringify(pid)}];
