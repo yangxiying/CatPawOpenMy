@@ -291,12 +291,12 @@ function httpRequestPolyfill(url, options) {
                 body: req._body || null,
             }));
             PENDING_REQUESTS.set(reqId, {
-                resolve: (bodyStr) => {
+                resolve: (bodyStr, statusCode, headers) => {
                     // 将字符串包装为 IncomingMessage 兼容对象（完整 Readable stream 接口）
                     var buf = bodyStr || '';
                     var inRes = {
-                        statusCode: 200,
-                        headers: {},
+                        statusCode: statusCode || 200,
+                        headers: headers || {},
                         _data: buf,
                         // Readable stream 方法 (来自 http.IncomingMessage)
                         setEncoding: function(enc) {},

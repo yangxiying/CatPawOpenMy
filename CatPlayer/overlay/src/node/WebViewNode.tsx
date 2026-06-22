@@ -261,15 +261,18 @@ try {
                             headers: { ...headers, 'Accept-Encoding': 'identity' },
                             body: method !== 'GET' && method !== 'HEAD' && body ? body : undefined,
                         });
+                        const respStatus = resp.status;
                         const respBody = await resp.text();
                         const respHeaders: Record<string, string> = {};
                         resp.headers.forEach((v: string, k: string) => { respHeaders[k] = v; });
                         const pid = msg.proxyId || msg.reqId;
+                        const safeBody = JSON.stringify(respBody);
+                        const safeHeaders = JSON.stringify(respHeaders);
                         wvRef.current?.injectJavaScript(`
 (() => {
     var p = window.__PROXY && window.__PROXY.pending && window.__PROXY.pending[${JSON.stringify(pid)}];
     if (!p) p = window.__PENDING_REQUESTS && window.__PENDING_REQUESTS.get(${msg.reqId});
-    if (p) { p.resolve(${JSON.stringify(respBody)}); if(window.__PROXY&&window.__PROXY.pending) delete window.__PROXY.pending[${JSON.stringify(pid)}]; }
+    if (p) { p.resolve(${safeBody}, ${respStatus}, ${safeHeaders}); if(window.__PROXY&&window.__PROXY.pending) delete window.__PROXY.pending[${JSON.stringify(pid)}]; }
 })();
 `);
                     } catch (e: any) {
