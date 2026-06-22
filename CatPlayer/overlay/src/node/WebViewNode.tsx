@@ -258,7 +258,7 @@ try {
                         const body = msg.body || null;
                         const resp = await fetch(url, {
                             method,
-                            headers: { ...headers, 'Accept-Encoding': 'identity' },
+                            headers, // 使用原始 headers，不做额外修改
                             body: method !== 'GET' && method !== 'HEAD' && body ? body : undefined,
                         });
                         const respStatus = resp.status;
