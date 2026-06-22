@@ -41,16 +41,822 @@ var _origXMLHttpRequest = globalThis.XMLHttpRequest;
 globalThis.XMLHttpRequest = undefined;
 try { window.XMLHttpRequest = undefined; } catch(e) {}
 try { globalThis.XMLHttpRequest = undefined; } catch(e) {}
-    hrtime: (() => {
-        const _origin = (typeof performance !== 'undefined' ? performance : Date).now();
-        const fn = (prev) => {
-            const now = (typeof performance !== 'undefined' ? performance : Date).now() - _origin;
-            const sec = Math.floor(now / 1000);
-            const ns = Math.floor((now % 1000) * 1e6);
-            if (prev) return [sec - prev[0], ns - prev[1]];
-            return [sec, ns];
+globalThis.setImmediate = globalThis.setImmediate || ((fn, ...a) => setTimeout(() => fn(...a), 0));
+globalThis.clearImmediate = globalThis.clearImmediate || clearTimeout;
+
+// ============================================================
+// 1. Buffer polyfill (简化版，覆盖 bundle 常用操作)
+// ============================================================
+if (!globalThis.Buffer) {
+    globalThis.Buffer = class Buffer extends Uint8Array {
+        static from(data, encoding) {
+            if (data instanceof ArrayBuffer) return new Buffer(new Uint8Array(data));
+            if (typeof data === 'string') {
+                if (encoding === 'hex') {
+                    const bytes = new Uint8Array(data.length / 2);
+                    for (let i = 0; i < data.length; i += 2) bytes[i / 2] = parseInt(data.substr(i, 2), 16);
+                    return new Buffer(bytes);
+                }
+                if (encoding === 'base64') {
+                    const binary = atob(data);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    return new Buffer(bytes);
+                }
+                if (encoding === 'utf8' || encoding === undefined) {
+                    return new Buffer(new TextEncoder().encode(data));
+                }
+                return new Buffer(new TextEncoder().encode(data));
+            }
+            if (data instanceof Uint8Array) return new Buffer(data);
+            if (Array.isArray(data)) return new Buffer(new Uint8Array(data));
+            return new Buffer(new Uint8Array(0));
+        }
+        static alloc(size, fill = 0) {
+            const b = new Buffer(new Uint8Array(size));
+            b.fill(fill);
+            return b;
+        }
+        static allocUnsafe(size) { return Buffer.alloc(size); }
+        static allocUnsafeSlow(size) { return Buffer.alloc(size); }
+        static concat(buffers) {
+            let total = 0;
+            for (const b of buffers) total += b.length;
+            const result = new Uint8Array(total);
+            let offset = 0;
+            for (const b of buffers) { result.set(b, offset); offset += b.length; }
+            return new Buffer(result);
+        }
+        toString(encoding = 'utf8') {
+            if (encoding === 'hex') return Array.from(this).map(b => b.toString(16).padStart(2, '0')).join('');
+            if (encoding === 'base64') return btoa(String.fromCharCode(...this));
+            return new TextDecoder().decode(this);
+        }
+        toJSON() { return { type: 'Buffer', data: Array.from(this) }; }
+    };
+    globalThis.Buffer.isBuffer = (obj) => obj instanceof Buffer;
+    globalThis.Buffer.byteLength = (str) => new TextEncoder().encode(str).length;
+    globalThis.Buffer.isView = (obj) => obj instanceof ArrayBuffer || obj instanceof DataView || (obj && obj.buffer instanceof ArrayBuffer);
+}
+
+// ============================================================
+// 2. path polyfill
+// ============================================================
+function pathPolyfill() {
+    const sep = '/';
+    function join(...args) { return args.filter(Boolean).join('/').replace(/\\/+/g, '/'); }
+    function resolve(...args) {
+        let result = args[0] || '/';
+        for (let i = 1; i < args.length; i++) {
+            if (args[i].startsWith('/')) result = args[i];
+            else result = join(result, args[i]);
+        }
+        return result;
+    }
+    function dirname(p) { const i = p.lastIndexOf('/'); return i <= 0 ? '/' : p.slice(0, i); }
+    function basename(p, ext) {
+        let name = p.split('/').pop() || '';
+        if (ext && name.endsWith(ext)) name = name.slice(0, -ext.length);
+        return name;
+    }
+    function extname(p) {
+        const name = p.split('/').pop() || '';
+        const dot = name.lastIndexOf('.');
+        return dot > 0 ? name.slice(dot) : '';
+    }
+    function relative(from, to) { return to; } // 简化
+    return { join, resolve, dirname, basename, extname, relative, sep, posix: { join, resolve, dirname, basename, extname, sep: '/' } };
+}
+
+// ============================================================
+// 3. url polyfill
+// ============================================================
+function urlPolyfill() {
+    return {
+        parse(urlStr) {
+            try { const u = new URL(urlStr); return { protocol: u.protocol, hostname: u.hostname, port: u.port, pathname: u.pathname, search: u.search, hash: u.hash, href: u.href, auth: u.username }; }
+            catch { return { href: urlStr, protocol: '', hostname: '', port: '', pathname: urlStr, search: '', hash: '', auth: '' }; }
+        },
+        format(obj) { return obj.href || ''; },
+        resolve(from, to) { try { return new URL(to, from).href; } catch { return to; } },
+        URL: globalThis.URL,
+    };
+}
+
+// ============================================================
+// 4. events polyfill (EventEmitter)
+// ============================================================
+function EventEmitterPolyfill() {
+    if (!(this instanceof EventEmitterPolyfill)) return new EventEmitterPolyfill();
+    this._events = {};
+}
+EventEmitterPolyfill.prototype.on = function(event, fn) {
+    if (!this._events) this._events = {};
+    (this._events[event] = this._events[event] || []).push(fn);
+    return this;
+};
+EventEmitterPolyfill.prototype.off = function(event, fn) {
+    if (!this._events) this._events = {};
+    const arr = this._events[event];
+    if (arr) this._events[event] = arr.filter(f => f !== fn);
+    return this;
+};
+EventEmitterPolyfill.prototype.emit = function(event, ...args) {
+    if (!this._events) this._events = {};
+    const list = this._events[event] || [];
+    list.forEach(fn => fn(...args));
+    return list.length > 0;
+};
+EventEmitterPolyfill.prototype.once = function(event, fn) {
+    const wrapped = (...a) => { fn(...a); this.off(event, wrapped); };
+    return this.on(event, wrapped);
+};
+EventEmitterPolyfill.prototype.addListener = EventEmitterPolyfill.prototype.on;
+EventEmitterPolyfill.prototype.removeListener = EventEmitterPolyfill.prototype.off;
+EventEmitterPolyfill.prototype.removeAllListeners = function(event) {
+    if (!this._events) this._events = {};
+    if (event) this._events[event] = [];
+    else this._events = {};
+    return this;
+};
+EventEmitterPolyfill.prototype.listenerCount = function(event) {
+    if (!this._events) return 0;
+    return this._events[event]?.length || 0;
+};
+EventEmitterPolyfill.prototype.setMaxListeners = function() { return this; };
+EventEmitterPolyfill.prototype.getMaxListeners = function() { return 100; };
+EventEmitterPolyfill.prototype.prependListener = function(event, fn) {
+    if (!this._events) this._events = {};
+    this._events[event] = [fn].concat(this._events[event] || []);
+    return this;
+};
+EventEmitterPolyfill.prototype.prependOnceListener = function(event, fn) {
+    const wrapped = (...a) => { fn(...a); this.off(event, wrapped); };
+    return this.prependListener(event, wrapped);
+};
+EventEmitterPolyfill.prototype.listeners = function(event) { return [...((this._events || {})[event] || [])]; };
+EventEmitterPolyfill.prototype.eventNames = function() { return Object.keys(this._events || {}); };
+EventEmitterPolyfill.prototype.rawListeners = function(event) { return [...((this._events || {})[event] || [])]; };
+EventEmitterPolyfill.defaultMaxListeners = 10;
+EventEmitterPolyfill.listenerCount = function(emitter, event) { return emitter.listenerCount(event); };
+EventEmitterPolyfill.EventEmitter = EventEmitterPolyfill;
+EventEmitterPolyfill.errorMonitor = Symbol('events.errorMonitor');
+EventEmitterPolyfill.captureRejections = false;
+
+// require('events') must return EventEmitterPolyfill itself (a constructor function)
+// with EventEmitterPolyfill.EventEmitter === EventEmitterPolyfill (like Node.js)
+const EVENT_MODULE = EventEmitterPolyfill;
+EVENT_MODULE.EventEmitter = EventEmitterPolyfill;
+EVENT_MODULE.once = function once(emitter, event) {
+    return new Promise((resolve) => { emitter.once(event, resolve); });
+};
+EVENT_MODULE.listenerCount = EventEmitterPolyfill.listenerCount;
+EVENT_MODULE.defaultMaxListeners = 10;
+EVENT_MODULE.captureRejections = false;
+EVENT_MODULE.errorMonitor = Symbol('events.errorMonitor');
+
+// ============================================================
+// 5. http/https polyfill (核心：拦截 createServer)
+// ============================================================
+const HTTP_SERVERS = {}; // port → handler(req, res)
+const PENDING_REQUESTS = new Map(); // reqId → { resolve, reject }
+// 暴露到 window 以便 injectJavaScript 注入的代码能访问
+window.__PENDING_REQUESTS = PENDING_REQUESTS;
+let NEXT_REQ_ID = 1;
+
+function createServerPolyfill(requestHandler) {
+    const _listeners = {};
+    const server = {
+        _handler: requestHandler,
+        _port: 0,
+        on: (event, cb) => {
+            (_listeners[event] = _listeners[event] || []).push(cb);
+            return server;
+        },
+        once: (event, cb) => {
+            const wrapped = function(...args) { cb(...args); server.removeListener(event, wrapped); };
+            wrapped._isOnce = true;
+            server.on(event, wrapped);
+            return server;
+        },
+        removeListener: (event, cb) => {
+            const arr = _listeners[event];
+            if (arr) _listeners[event] = arr.filter(f => f !== cb);
+            return server;
+        },
+        emit: (event, ...args) => {
+            const list = _listeners[event] || [];
+            list.slice().forEach(fn => fn(...args));
+            return list.length > 0;
+        },
+        address: () => ({ address: '127.0.0.1', port: server._port, family: 'IPv4', url: \`http://127.0.0.1:\${server._port}\` }),
+        listen: (opts, cb) => {
+            const rawPort = typeof opts === 'number' ? opts : (opts?.port || 0);
+            const numericPort = typeof rawPort === 'number' ? rawPort : parseInt(rawPort, 10) || 0;
+            server._port = numericPort || 18080; // 0 → 默认 18080（WebView 端不真正监听）
+            HTTP_SERVERS[server._port] = requestHandler;
+            if (cb) cb();
+            _log('listen port=' + server._port);
+            // 通知 RN 端口就绪
+            try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'port', port: server._port })); } catch (e) { _log('port msg fail: ' + e); }
+            return server;
+        },
+        close: (cb) => { delete HTTP_SERVERS[server._port]; if (cb) cb(); },
+        addListener: (event, cb) => server.on(event, cb),
+        removeAllListeners: (event) => { if (event) delete _listeners[event]; else Object.keys(_listeners).forEach(k => delete _listeners[k]); return server; },
+        listeners: (event) => [...((_listeners[event] || []))],
+        eventNames: () => Object.keys(_listeners),
+    };
+    return server;
+}
+
+function httpRequestPolyfill(url, options) {
+    const reqId = NEXT_REQ_ID++;
+    const req = new EventEmitterPolyfill();
+    req.method = options?.method || 'GET';
+    req.url = typeof url === 'string' ? url : url?.href || '/';
+    req.headers = options?.headers || {};
+    req.setHeader = (k, v) => { req.headers[k.toLowerCase()] = v; };
+    req.getHeader = (k) => req.headers[k.toLowerCase()];
+    req.write = (data) => { req._body = (req._body || '') + data; };
+    req.end = (data) => {
+        if (data) req._body = (req._body || '') + data;
+        // 发送请求到 RN
+        try {
+            window.ReactNativeWebView?.postMessage(JSON.stringify({
+                type: 'proxyRequest',
+                reqId,
+                method: req.method,
+                url: req.url,
+                headers: req.headers,
+                body: req._body || null,
+            }));
+            PENDING_REQUESTS.set(reqId, {
+                resolve: (bodyStr, statusCode, headers) => {
+                    // 将字符串包装为 IncomingMessage 兼容对象（完整 Readable stream 接口）
+                    var buf = bodyStr || '';
+                    var inRes = {
+                        statusCode: statusCode || 200,
+                        headers: headers || {},
+                        _data: buf,
+                        // Readable stream 方法 (来自 http.IncomingMessage)
+                        setEncoding: function(enc) {},
+                        resume: function() { return inRes; },
+                        pause: function() {},
+                        isPaused: function() { return false; },
+                        read: function(size) { return buf.length ? buf : null; },
+                        pipe: function(dest) { dest.end(buf); return dest; },
+                        unpipe: function() {},
+                        unshift: function() {},
+                        wrap: function() {},
+                        destroy: function() {},
+                        destroySoon: function() {},
+                        addListener: function(ev, cb) { return inRes.on(ev, cb); },
+                        removeListener: function(ev, cb) { return inRes; },
+                        removeAllListeners: function() { return inRes; },
+                        listeners: function(ev) { return []; },
+                        listenerCount: function(ev) { return 0; },
+                        eventNames: function() { return []; },
+                        getMaxListeners: function() { return 10; },
+                        setMaxListeners: function() { return inRes; },
+                        on: function(ev, cb) {
+                            if (ev === 'data' && buf.length > 0) { cb(buf); }
+                            if (ev === 'end') setTimeout(cb, 0);
+                            if (ev === 'close') setTimeout(cb, 0);
+                            if (ev === 'error') { /* ignore, no error */ }
+                            if (ev === 'readable') { /* ignore */ }
+                            return inRes;
+                        },
+                        once: function(ev, cb) {
+                            var wrapped = function() { cb.apply(this, arguments); };
+                            inRes.on(ev, wrapped);
+                            return inRes;
+                        },
+                        emit: function() { return true; },
+                        // http.ServerResponse 兼容
+                        write: function() {},
+                        end: function() {},
+                    };
+                    req.emit('response', inRes);
+                },
+                reject: (e) => { req.emit('error', e); },
+            });
+        } catch (e) { req.emit('error', e); }
+    };
+    return req;
+}
+
+// ============================================================
+// 5b. http/https module (供 require('http') 使用)
+// ============================================================
+function httpPolyfill() {
+    const Agent = class Agent extends EventEmitterPolyfill {
+        constructor(opts) { super(); this.options = Object.assign({ rejectUnauthorized: false, keepAlive: true }, opts || {}); }
+        createConnection() { return {}; }
+        destroy() {}
+    };
+    const globalAgent = new Agent();
+    return {
+        createServer: createServerPolyfill,
+        request: httpRequestPolyfill,
+        get: (url, opts) => { const r = httpRequestPolyfill(url, { ...opts, method: 'GET' }); r.end(); return r; },
+        METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
+        STATUS_CODES: { 200: 'OK', 404: 'Not Found', 500: 'Internal Server Error' },
+        Agent,
+        globalAgent,
+        maxHeaderSize: 16384,
+    };
+}
+
+// ============================================================
+// 6. crypto polyfill (Web Crypto API)
+// ============================================================
+function cryptoPolyfill() {
+    const subtle = globalThis.crypto?.subtle;
+    async function hashIt(algo, data) {
+        const algoMap = { md5: 'MD5', sha1: 'SHA-1', sha256: 'SHA-256', sha512: 'SHA-512' };
+        const normalizedAlgo = algoMap[algo?.toLowerCase()] || algo;
+        if (!subtle) throw new Error('Web Crypto not available');
+        const buf = typeof data === 'string' ? new TextEncoder().encode(data) : (data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+        const hash = await subtle.digest(normalizedAlgo, buf);
+        return new Uint8Array(hash);
+    }
+    function hexEncode(bytes) { return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(''); }
+    function base64Encode(bytes) { return btoa(String.fromCharCode(...bytes)); }
+
+    return {
+        createHash: (algo) => {
+            const a = algo?.toLowerCase().replace('-', '') || 'sha256';
+            return {
+                update: function(data) {
+                    const input = (data instanceof Buffer || data instanceof Uint8Array) ? data : (typeof data === 'string' ? new TextEncoder().encode(data) : data);
+                    this._data = this._data ? Buffer.concat([this._data, Buffer.from(input)]) : Buffer.from(input);
+                    return this;
+                },
+                digest: () => { throw new Error('use async digest instead'); },
+                async digestAsync() {
+                    const hashBytes = await hashIt(a, this._data);
+                    return Buffer.from(hashBytes);
+                },
+                hex: async function() { return hexEncode(await this.digestAsync()); },
+                base64: async function() { return base64Encode(await this.digestAsync()); },
+            };
+        },
+        createHmac: (algo, key) => {
+            const a = algo?.toLowerCase().replace('-', '') || 'sha256';
+            const keyBytes = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+            return {
+                update: function(data) {
+                    const input = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+                    this._data = this._data ? Buffer.concat([this._data, Buffer.from(input)]) : Buffer.from(input);
+                    return this;
+                },
+                async digestAsync() {
+                    if (!subtle) throw new Error('Web Crypto not available');
+                    const algoMap = { md5: 'MD5', sha1: 'SHA-1', sha256: 'SHA-256', sha512: 'SHA-512' };
+                    const k = await subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: algoMap[a] || 'SHA-256' }, false, ['sign']);
+                    const sig = await subtle.sign('HMAC', k, this._data);
+                    return Buffer.from(new Uint8Array(sig));
+                },
+                hex: async function() { return hexEncode(await this.digestAsync()); },
+            };
+        },
+        randomBytes: (size) => {
+            const bytes = new Uint8Array(size);
+            globalThis.crypto.getRandomValues(bytes);
+            return Buffer.from(bytes);
+        },
+        randomUUID: () => globalThis.crypto.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx'.replace(/x/g, () => (Math.random() * 16 | 0).toString(16)),
+        createCipheriv: () => { throw new Error('createCipheriv polyfill not implemented'); },
+        createDecipheriv: () => { throw new Error('createDecipheriv polyfill not implemented'); },
+        pbkdf2: () => { throw new Error('pbkdf2 polyfill not implemented'); },
+        scrypt: () => { throw new Error('scrypt polyfill not implemented'); },
+    };
+}
+
+// ============================================================
+// 7. fs polyfill (最小化)
+// ============================================================
+function fsPolyfill() {
+    const memFs = new Map(); // 内存文件系统
+    function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+    return {
+        existsSync: (path) => memFs.has(path) || String(path).includes('db.json'),
+        readFileSync: (path, enc) => {
+            if (memFs.has(path)) return enc === 'utf8' ? memFs.get(path) : Buffer.from(memFs.get(path));
+            // 数据库文件：返回空 JSON
+            if (String(path).includes('db.json')) return '{}';
+            throw enoent('ENOENT: no such file or directory, read ' + path);
+        },
+        writeFileSync: (path, data, enc) => {
+            memFs.set(path, enc === 'utf8' ? data : String(data));
+        },
+        mkdirSync: () => {},
+        mkdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
+        statSync: (path) => {
+            if (String(path).includes('db.json')) return { size: 0, mode: 0o644, isFile: () => true, isDirectory: () => false };
+            throw enoent('ENOENT: no such file or directory, stat');
+        },
+        stat: (path, cb) => {
+            if (String(path).includes('db.json')) { process.nextTick(() => cb(null, { size: 0, mode: 0o644, isFile: () => true, isDirectory: () => false })); return; }
+            process.nextTick(() => cb(enoent()));
+        },
+        readdirSync: () => [],
+        openSync: () => -1,
+        open: (path, flags, mode, cb) => { if (typeof mode === 'function') { cb = mode; } process.nextTick(() => cb(null, -1)); },
+        close: (fd, cb) => { if (cb) process.nextTick(cb); },
+        closeSync: () => {},
+        write: (fd, buffer, offset, length, position, cb) => {
+            if (typeof cb !== 'function') { cb = position; } if (typeof cb !== 'function') { cb = length; }
+            if (typeof cb === 'function') process.nextTick(() => cb(null, typeof buffer === 'string' ? Buffer.byteLength(buffer) : buffer.length));
+        },
+        writeSync: (fd, buffer) => typeof buffer === 'string' ? Buffer.byteLength(buffer) : buffer.length,
+        fstat: (fd, cb) => { process.nextTick(() => cb(null, { size: 0, mode: 0o644 })); },
+        fstatSync: () => ({ size: 0, mode: 0o644 }),
+        fsync: (fd, cb) => { if (cb) process.nextTick(cb); },
+        fsyncSync: () => {},
+        ftruncate: (fd, len, cb) => { if (typeof len === 'function') { cb = len; } if (cb) process.nextTick(cb); },
+        ftruncateSync: () => {},
+        realpathSync: (p) => p,
+        access: (path, mode, cb) => { if (typeof mode === 'function') { cb = mode; } if (cb) process.nextTick(cb); },
+        readFile: (path, opts, cb) => {
+            if (typeof opts === 'function') { cb = opts; }
+            if (cb) process.nextTick(() => {
+                if (memFs.has(path)) { cb(null, opts === 'utf8' || (opts && opts.encoding === 'utf8') ? memFs.get(path) : Buffer.from(memFs.get(path))); return; }
+                if (String(path).includes('db.json')) { cb(null, '{}'); return; }
+                cb(enoent('ENOENT: no such file or directory, readFile ' + path));
+            });
+        },
+        writeFile: (path, data, opts, cb) => {
+            if (typeof opts === 'function') { cb = opts; }
+            memFs.set(path, typeof data === 'string' ? data : String(data));
+            if (cb) process.nextTick(() => cb(null));
+        },
+        unlink: (path, cb) => { memFs.delete(path); if (cb) process.nextTick(() => cb(null)); },
+        unlinkSync: () => {},
+        readdir: (path, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(() => cb(null, [])); },
+        rename: (oldPath, newPath, cb) => { if (cb) process.nextTick(cb); },
+        copyFile: (src, dest, cb) => { if (cb) process.nextTick(cb); },
+        appendFile: (path, data, opts, cb) => { if (typeof opts === 'function') { cb = opts; } if (cb) process.nextTick(cb); },
+        watch: (path, opts, cb) => ({ on: () => {}, close: () => {} }),
+        exists: (path, cb) => { if (cb) process.nextTick(() => cb(memFs.has(path) || String(path).includes('db.json'))); },
+        promises: undefined,
+    };
+}
+
+// ============================================================
+// 8. require polyfill
+// ============================================================
+const MODULES = {
+    'http': (() => { const m = httpPolyfill(); m.default = m; m.__esModule = true; return m; })(),
+    'https': (() => { const m = httpPolyfill(); m.default = m; m.__esModule = true; return m; })(),
+    'events': EVENT_MODULE,
+    'stream': { Stream: EventEmitterPolyfill, Readable: Object.assign(EventEmitterPolyfill, { from: (iterable) => new EventEmitterPolyfill() }), Writable: EventEmitterPolyfill, PassThrough: EventEmitterPolyfill, Duplex: EventEmitterPolyfill, Transform: EventEmitterPolyfill, pipeline: (...s) => { const cb = s[s.length-1]; if (typeof cb === 'function') cb(); }, finished: (s, cb) => { if (cb) cb(); }, addAbortSignal: (signal, stream) => stream },
+    'zlib': { createGunzip: () => new EventEmitterPolyfill(), createInflate: () => new EventEmitterPolyfill(), createInflateRaw: () => new EventEmitterPolyfill(), createDeflate: () => new EventEmitterPolyfill(), createDeflateRaw: () => new EventEmitterPolyfill(), createGzip: () => new EventEmitterPolyfill(), constants: {}, Z_NO_FLUSH: 0, Z_PARTIAL_FLUSH: 1, Z_SYNC_FLUSH: 2, Z_FULL_FLUSH: 3, Z_FINISH: 4, Z_BLOCK: 5, Z_OK: 0, Z_STREAM_END: 1, Z_NEED_DICT: 2, Z_ERRNO: -1, Z_STREAM_ERROR: -2, Z_DATA_ERROR: -3, Z_MEM_ERROR: -4, Z_BUF_ERROR: -5, Z_VERSION_ERROR: -6, Z_NO_COMPRESSION: 0, Z_BEST_SPEED: 1, Z_BEST_COMPRESSION: 9, Z_DEFAULT_COMPRESSION: -1, Z_FILTERED: 1, Z_HUFFMAN_ONLY: 2, Z_RLE: 3, Z_FIXED: 4, Z_DEFAULT_STRATEGY: 0, Z_DEFLATED: 8, Z_NULL: 0, Z_DEFAULT_WINDOWBITS: 15 },
+    'dns': { resolve: (host, cb) => cb(null, ['127.0.0.1']), resolve4: (host, cb) => cb(null, ['127.0.0.1']), lookup: (h, opts, cb) => { if (typeof opts === 'function') { cb = opts; opts = {}; } cb && cb(null, '127.0.0.1', 4); }, setDefaultResultOrder: () => {}, getDefaultResultOrder: () => 'ipv4first' },
+    'tls': { TLSSocket: EventEmitterPolyfill, connect: () => ({ on: () => {} }) },
+    'tty': { isatty: () => false },
+    'net': { Socket: EventEmitterPolyfill, createConnection: () => ({ on: () => {}, pipe: () => {} }), connect: () => ({ on: () => {} }), isIP: (addr) => { if (/^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/.test(addr)) return 4; if (addr.includes(':')) return 6; return 0; }, isIPv4: (addr) => /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/.test(addr), isIPv6: (addr) => addr.includes(':') },
+    'os': { platform: () => 'darwin', homedir: () => '/var/mobile', tmpdir: () => '/tmp', type: () => 'Darwin', arch: () => 'arm64', hostname: () => 'CatPlayer', cpus: () => [{ model: 'Apple' }], totalmem: () => 6000000000, freemem: () => 3000000000, uptime: () => 0, networkInterfaces: () => ({}) },
+    'path': pathPolyfill(),
+    'url': urlPolyfill(),
+    'fs': fsPolyfill(),
+    'constants': {},
+    'crypto': (() => { const m = cryptoPolyfill(); m.default = m; m.__esModule = true; return m; })(),
+    'diagnostics_channel': { channel: (name) => ({ publish: () => {}, subscribe: () => ({ unsubscribe: () => {} }) }) },
+    'async_hooks': { AsyncLocalStorage: class AsyncLocalStorage { getStore() { return this._store; } run(store, cb, ...args) { this._store = store; return cb(...args); } }, AsyncResource: class AsyncResource { constructor(type) { this.type = type; } runInAsyncScope(cb, ...args) { return cb(...args); } emitDestroy() {} } },
+    'http2': { createSecureServer: () => new EventEmitterPolyfill(), createServer: () => new EventEmitterPolyfill(), constants: {}, Http2ServerRequest: EventEmitterPolyfill, Http2ServerResponse: EventEmitterPolyfill },
+    'perf_hooks': { performance: globalThis.performance || { now: () => Date.now(), timing: { navigationStart: 0 } }, PerformanceObserver: class PerformanceObserver { constructor() {} observe() {} disconnect() {} } },
+    'console': globalThis.console || { log: () => {}, error: () => {}, warn: () => {}, info: () => {}, debug: () => {} },
+    'vm': { createContext: (ctx) => ctx || {}, Script: class Script { constructor(code) { this.code = code; } runInContext(ctx) { return new Function('return ' + this.code)(); } } },
+    'string_decoder': { StringDecoder: class StringDecoder { constructor(encoding) { this.encoding = encoding || 'utf8'; } write(buffer) { return buffer.toString(this.encoding); } end(buffer) { return this.write(buffer); } } },
+    'querystring': { parse: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; }, stringify: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), encode: (obj) => Object.entries(obj || {}).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'), decode: (str) => { const obj = {}; if (!str) return obj; str.split('&').forEach(p => { const [k, v] = p.split('='); obj[decodeURIComponent(k)] = v ? decodeURIComponent(v) : ''; }); return obj; } },
+    'worker_threads': { parentPort: null, workerData: {}, isMainThread: true, threadId: 0, markAsUncloneable: () => {} },
+    'child_process': {},
+    'fs/promises': (() => {
+        var _memFs = {};
+        function enoent(msg) { const e = new Error(msg || 'ENOENT: no such file or directory'); e.code = 'ENOENT'; e.errno = -2; e.syscall = 'open'; return e; }
+        function makeFd(path) {
+            var fd = {
+                _path: path,
+                _buf: '',
+                writeFile: function(data, opts) {
+                    _memFs[String(path)] = typeof data === 'string' ? data : String(data);
+                    return Promise.resolve();
+                },
+                write: function(buffer, offset, len, position) {
+                    fd._buf += typeof buffer === 'string' ? buffer : '';
+                    return Promise.resolve();
+                },
+                sync: function() { return Promise.resolve(); },
+                close: function() { return Promise.resolve(); },
+            };
+            return fd;
+        }
+        return {
+            access: (path) => Promise.resolve(undefined),
+            readFile: (path, opts) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) {
+                    var val = _memFs[key];
+                    if (opts && opts.encoding === 'utf-8') return Promise.resolve(typeof val === 'string' ? val : '');
+                    return Promise.resolve(val);
+                }
+                // 文件不存在必须 reject ENOENT，node-json-db FileAdapter 依赖此信号
+                return Promise.reject(enoent('ENOENT: no such file or directory, read ' + path));
+            },
+            writeFile: (path, data, opts) => {
+                _memFs[String(path || '')] = data;
+                return Promise.resolve();
+            },
+            mkdir: (path, opts) => Promise.resolve(),
+            unlink: (path) => { delete _memFs[String(path || '')]; return Promise.resolve(); },
+            readdir: (path) => Promise.resolve(Object.keys(_memFs).filter(function(k) { return k.startsWith(String(path || '')); }).map(function(k) { return k.split('/').pop(); })),
+            stat: (path) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) return Promise.resolve({ isFile: () => true, isDirectory: () => false, size: 0, mtime: new Date(), atime: new Date() });
+                var e = enoent(); return Promise.reject(e);
+            },
+            lstat: (path) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) return Promise.resolve({ isFile: () => true, isDirectory: () => false, size: 0, mtime: new Date(), atime: new Date() });
+                var e = enoent(); return Promise.reject(e);
+            },
+            rename: (oldPath, newPath) => { _memFs[String(newPath || '')] = _memFs[String(oldPath || '')]; delete _memFs[String(oldPath || '')]; return Promise.resolve(); },
+            copyFile: (src, dest) => { _memFs[String(dest || '')] = _memFs[String(src || '')]; return Promise.resolve(); },
+            rmdir: (path) => Promise.resolve(),
+            chmod: (path, mode) => Promise.resolve(),
+            appendFile: (path, data, opts) => {
+                var key = String(path || '');
+                var prev = _memFs[key];
+                _memFs[key] = (prev || '') + (data || '');
+                return Promise.resolve();
+            },
+            open: (path, flags, mode) => {
+                // 'w' 模式：创建/截断文件，返回可写 fd
+                var key = String(path || '');
+                if (typeof flags === 'string' && flags.indexOf('w') >= 0) {
+                    _memFs[key] = '';
+                    return Promise.resolve(makeFd(key));
+                }
+                // 'r' 模式：文件存在则返回 fd 供 stat/fstat 等，不存在则 reject
+                if (_memFs.hasOwnProperty(key)) {
+                    return Promise.resolve(makeFd(key));
+                }
+                return Promise.reject(enoent('ENOENT: no such file or directory, open ' + path));
+            },
+            watch: (path, opts) => ({ on: () => {}, close: () => {} }),
+            exists: (path) => Promise.resolve(!!_memFs[String(path || '')]),
+            readlink: (path) => Promise.reject(enoent()),
+            symlink: (target, path, type) => Promise.resolve(),
+            truncate: (path, len) => {
+                var key = String(path || '');
+                if (_memFs.hasOwnProperty(key)) { var s = String(_memFs[key]); _memFs[key] = s.slice(0, len); }
+                return Promise.resolve();
+            },
+            utimes: (path, atime, mtime) => Promise.resolve(),
         };
-        fn.bigint = () => BigInt(Math.floor(((typeof performance !== 'undefined' ? performance : Date).now() - _origin) * 1e6));
-        return fn;
     })(),
+    'assert': (() => {
+        function assert(val, msg) { if (!val) throw new Error(msg || 'Assertion failed'); }
+        assert.ok = assert;
+        assert.strictEqual = (a, b, msg) => { if (a !== b) throw new Error(msg || \`\${a} !== \${b}\`); };
+        assert.equal = (a, b, msg) => { if (a != b) throw new Error(msg || \`\${a} == \${b}\`); };
+        assert.deepEqual = (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error('not deep equal'); };
+        assert.notStrictEqual = (a, b) => { if (a === b) throw new Error(\`\${a} === \${b}\`); };
+        assert.AssertionError = class AssertionError extends Error {
+            constructor(o) { super(o.message || ''); this.code = o?.code || 'ERR_ASSERTION'; this.actual = o?.actual; this.expected = o?.expected; this.operator = o?.operator || '=='; }
+        };
+        assert.fail = (msg) => { throw new Error(msg || 'Failed'); };
+        return assert;
+    })(),
+    'util': {
+        format: (f, ...a) => { if (typeof f !== 'string') return String(f); let i = 0; return f.replace(/%[sdifoO]/g, () => String(a[i++] ?? '')); },
+        inspect: (o) => JSON.stringify(o),
+        inherits: (ctor, superCtor) => { if (!ctor || !superCtor) { if (ctor) ctor.prototype = {}; return; } const proto = superCtor.prototype || {}; ctor.super_ = superCtor; ctor.prototype = Object.create(proto, { constructor: { value: ctor, enumerable: false, configurable: true } }); },
+        promisify: (fn) => (...a) => new Promise((res, rej) => fn(...a, (e, r) => e ? rej(e) : res(r))),
+        deprecate: (fn) => fn,
+        debuglog: (section) => { const self = MODULES.util; return function(msg, ...args) { console.log(\`[\${section}]\`, typeof msg === 'string' ? msg : self.inspect(msg), ...args); }; },
+        types: { isDate: (v) => v instanceof Date, isRegExp: (v) => v instanceof RegExp, isArray: Array.isArray, isBoolean: (v) => typeof v === 'boolean', isNumber: (v) => typeof v === 'number', isString: (v) => typeof v === 'string', isFunction: (v) => typeof v === 'function', isObject: (v) => v !== null && typeof v === 'object', isPrimitive: (v) => v === null || !['object','function'].includes(typeof v) },
+        callbackify: (fn) => (...a) => { const cb = a.pop(); fn(...a).then(r => cb(null, r)).catch(e => cb(e)); },
+        TextDecoder: globalThis.TextDecoder,
+        TextEncoder: globalThis.TextEncoder,
+    },
+    'module': { Module: class Module { static _resolveFilename() { return ''; } static _cache = {}; _compile() {} }, createRequire: (filename) => customRequire },
+    'buffer': { Buffer: globalThis.Buffer, Blob: class Blob { constructor(parts, opts) { this._parts = parts || []; this.type = opts?.type || ''; } async arrayBuffer() { return new ArrayBuffer(0); } get size() { return 0; } slice() { return new Blob(); } stream() { return new EventEmitterPolyfill(); } text() { return Promise.resolve(''); } }, File: class File extends (globalThis.Blob || Blob) { constructor(parts, name, opts) { super(parts, opts); this.name = name; this.lastModified = opts?.lastModified || Date.now(); } }, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
+};
+
+// CDN global fallback: website source bundle 内部 require('react') 等走 polyfill
+// CDN 脚本已注入 window.React / window.ReactDOM / window.antd 等
+var WINDOW_FALLBACK = {
+    react: function() { return window.React || {}; },
+    'react-dom': function() { return window.ReactDOM || {}; },
+    'react-dom/client': function() { return { createRoot: window.ReactDOM?.createRoot?.bind(window.ReactDOM) }; },
+    antd: function() { return window.antd || {}; },
+    axios: function() { return window.axios || {}; },
+    dayjs: function() { return window.dayjs || {}; },
+    classnames: function() { return window.classNames || function() { var args = arguments; return Array.prototype.slice.call(args).filter(Boolean).join(' '); }; },
+    '@ant-design/icons': function() { return window.icons || {}; },
+    'prop-types': function() { return { any: {}, array: {}, bool: {}, func: {}, number: {}, object: {}, string: {}, node: {}, element: {}, oneOfType: function() { return {}; }, shape: function() { return {}; } }; },
+};
+var _modCache = {};
+
+function customRequire(moduleName) {
+    var mod = MODULES[moduleName];
+    if (!mod) {
+        var stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
+        if (stripped) mod = MODULES[stripped];
+    }
+    if (!mod) {
+        // Fallback: 從 window 全局獲取 CDN 載入的庫
+        var fallback = WINDOW_FALLBACK[moduleName];
+        if (fallback) {
+            mod = fallback();
+        } else {
+            // 檢查 window 是否有同名全局
+            var globalKey = moduleName.replace(/^@/, '').replace(/\\//g, '_');
+            mod = window[globalKey] || window[moduleName];
+        }
+    }
+    if (!mod) mod = {};
+    // Babel __esModule interop: ensure every module has __esModule and default
+    if (!mod.__esModule) mod.__esModule = true;
+    if (!mod.default) mod.default = mod;
+    return mod;
+}
+
+// ============================================================
+// 9. 消息监听：接收 RN 发来的请求，路由到 HTTP handler
+// ============================================================
+window.addEventListener('message', (event) => {
+    let msg;
+    try { msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch { return; }
+    if (!msg || msg.type !== 'request') return;
+
+    const port = msg.port || 18080;
+    const handler = HTTP_SERVERS[port];
+    if (!handler) {
+        const keys = Object.keys(HTTP_SERVERS);
+        console.warn('[polyfill] no handler for port', port, 'registered:', keys);
+        try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[polyfill] no handler port='+port+' registered='+keys})); } catch {}
+        return;
+    }
+
+    const bodyContent = msg.body || '';
+
+    // 构造 req 对象（兼容 Fastify 使用的部分 IncomingMessage 接口）
+    const req = new EventEmitterPolyfill();
+    req.method = (msg.method || 'GET').toUpperCase();
+    req.url = msg.url || '/';
+    req.headers = msg.headers || {};
+    req.socket = {};
+    req.connection = {};
+    req._body = bodyContent;
+    // 兼容 stream consumers — IncomingMessage 完整接口
+    req.setEncoding = function(enc) {};
+    req.resume = function() { return req; };
+    req.pause = function() {};
+    req.isPaused = function() { return false; };
+    req.read = function(size) { return req._body ? req._body : null; };
+    req.pipe = function(dest) { dest.end(req._body || ''); return dest; };
+    req.unpipe = function() {};
+    req.unshift = function() {};
+    req.wrap = function() {};
+    req.destroy = function() {};
+    req.destroySoon = function() {};
+    req.addListener = req.on.bind(req);
+    req.removeListener = function(ev, cb) { if (req._events) req.off(ev, cb); return req; };
+    req.removeAllListeners = function(ev) { if (req._events) { if (ev) delete req._events[ev]; else req._events = {}; } return req; };
+    req.listeners = function(ev) { return (req._events && req._events[ev]) || []; };
+    req.listenerCount = function(ev) { return req.listeners(ev).length; };
+    req.eventNames = function() { return Object.keys(req._events || {}); };
+    req.getMaxListeners = function() { return 10; };
+    req.setMaxListeners = function() { return req; };
+
+    // 构造 res 对象（兼容 Fastify 使用的 ServerResponse 接口）
+    let statusCode = 200;
+    const resHeaders = {};
+    let resBody = '';
+    const res = new EventEmitterPolyfill();
+    res.statusCode = 200;
+    res.statusMessage = '';
+    res._headers = {};
+    res.setHeader = (key, val) => { resHeaders[key] = val; };
+    res.getHeader = (key) => resHeaders[key];
+    res.getHeaders = () => ({ ...resHeaders });
+    res.hasHeader = (key) => key in resHeaders;
+    res.removeHeader = (key) => { delete resHeaders[key]; };
+    res.writeHead = (status, statusText, hdrs) => {
+        statusCode = status;
+        if (typeof statusText === 'object') { hdrs = statusText; statusText = ''; }
+        if (hdrs) Object.assign(resHeaders, hdrs);
+    };
+    res.write = (chunk) => { resBody += String(chunk); };
+    res.end = (chunk) => {
+        if (chunk) resBody += String(chunk);
+        // Diagnostic: log /config response length
+        if (msg.url && msg.url.indexOf('/config') >= 0) {
+            try { window.ReactNativeWebView?.postMessage(JSON.stringify({type:'log',msg:'[polyfill] /config response len=' + resBody.length + ' preview=' + resBody.slice(0, 120)})); } catch {}
+        }
+        try {
+            window.ReactNativeWebView?.postMessage(JSON.stringify({
+                type: 'response',
+                reqId: msg.reqId,
+                status: statusCode,
+                headers: resHeaders,
+                body: resBody,
+            }));
+        } catch (e) { console.error('[polyfill] response postMessage failed', e); }
+    };
+    res.addTrailers = () => {};
+    res.flushHeaders = () => {};
+    res.sendDate = false;
+    res.assignSocket = () => {};
+    res.detachSocket = () => {};
+    res.destroy = () => {};
+    res.writeContinue = () => {};
+    res.writeProcessing = () => {};
+    res.setTimeout = () => res;
+    res.statusCode = statusCode;
+
+    // 以流形式推送 body（Fastify 通过 req.on('data') + req.on('end') 读取）
+    process.nextTick(() => {
+        if (bodyContent) {
+            try { req.emit('data', Buffer.from(bodyContent)); } catch (e) { /* ignore */ }
+        }
+        try { req.emit('end'); } catch (e) { /* ignore */ }
+    });
+
+    try {
+        handler(req, res);
+    } catch (e) {
+        console.error('[polyfill] handler error', e);
+        window.ReactNativeWebView?.postMessage(JSON.stringify({
+            type: 'response', reqId: msg.reqId, status: 500, headers: {}, body: String(e),
+        }));
+    }
+});
+
+// ============================================================
+// 10. 注入
+// ============================================================
+globalThis.Buffer = globalThis.Buffer || globalThis.Buffer;
+globalThis.__filename = 'main.js';
+globalThis.__dirname = '/';
+globalThis.module = { exports: {} };
+globalThis.exports = globalThis.module.exports;
+
+// require 注入：多重保障，确保 WebView 各执行上下文都能访问
+// 使用自定义属性名避免被浏览器/引擎拦截
+window.__catpaw_require = customRequire;
+try { Object.defineProperty(globalThis, 'require', { value: customRequire, writable: true, configurable: true }); } catch { try { globalThis.require = customRequire; } catch {} }
+try { window.require = customRequire; } catch {}
+try { self.require = customRequire; } catch {}
+
+// ============================================================
+// 11. catServerFactory / catDartServerPort
+// ============================================================
+globalThis.catServerFactory = function catServerFactory(handle) {
+    _log('catServerFactory called');
+    return createServerPolyfill(handle);
+};
+globalThis.catDartServerPort = function catDartServerPort() {
+    return 0;
+};
+
+_log('globals injected');
+
+console.log('[polyfill] Node.js polyfills loaded (WebView)');
+try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: 'polyfill env ready' })); } catch {}
+
+// 拦截 fetch 请求：将 API 请求代理到远程后端
+(function() {
+    var _origFetch = window.fetch;
+    window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        // API 请求匹配：/spider/、/config、/check
+        if (url && (url.indexOf('/spider/') >= 0 || url === '/config' || url.indexOf('/config?') >= 0 || url === '/check' || url.indexOf('/check?') >= 0)) {
+            var msgId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            return new Promise(function(resolve, reject) {
+                window.__PROXY.pending[msgId] = { resolve: resolve, reject: reject };
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'proxyRequest',
+                    proxyId: msgId,
+                    method: (init && init.method) || 'GET',
+                    url: url,
+                    headers: (init && init.headers) || {},
+                    body: (init && init.body) || null,
+                }));
+            });
+        }
+        return _origFetch.apply(this, arguments);
+    };
+    window.__PROXY = { pending: {} };
+})();
+
+// 通知 RN polyfill 已就绪，可以注入 bundle
+try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {
+    try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'error', error: 'failed to send ready msg' })); } catch {}
+}
+
 }`;
