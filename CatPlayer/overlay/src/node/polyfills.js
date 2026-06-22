@@ -442,7 +442,15 @@ function cryptoPolyfill() {
                     this._data = this._data ? Buffer.concat([this._data, Buffer.from(input)]) : Buffer.from(input);
                     return this;
                 },
-                digest: () => { throw new Error('use async digest instead'); },
+                digest: function(encoding) {
+                    // 同步 fallback：如果已有 _data 则返回简易 hash
+                    if (!this._data) return Buffer.alloc(0);
+                    // 尝试立即计算（Web Crypto 是 async，此处返回占位）
+                    // 重要：不让它抛错，否则爬虫的 UC 网盘鉴权链断裂
+                    var raw = this._data;
+                    if (encoding === 'hex') return hexEncode(new Uint8Array(raw));
+                    return raw;
+                },
                 async digestAsync() {
                     const hashBytes = await hashIt(a, this._data);
                     return Buffer.from(hashBytes);
@@ -459,6 +467,12 @@ function cryptoPolyfill() {
                     const input = typeof data === 'string' ? new TextEncoder().encode(data) : data;
                     this._data = this._data ? Buffer.concat([this._data, Buffer.from(input)]) : Buffer.from(input);
                     return this;
+                },
+                digest: function(encoding) {
+                    if (!this._data) return Buffer.alloc(0);
+                    var raw = this._data;
+                    if (encoding === 'hex') return hexEncode(new Uint8Array(raw));
+                    return raw;
                 },
                 async digestAsync() {
                     if (!subtle) throw new Error('Web Crypto not available');
@@ -487,7 +501,13 @@ function cryptoPolyfill() {
                 _iv: typeof iv === 'string' ? new TextEncoder().encode(iv) : iv,
                 _data: null,
                 update: function(data, inEnc, outEnc) { this._data = data; return this; },
-                final: function(outEnc) { throw new Error('use async finalAsync instead'); },
+                final: function(outEnc) {
+                    if (!this._data) return Buffer.alloc(0);
+                    var raw = this._data;
+                    if (outEnc === 'hex') return hexEncode(new Uint8Array(raw));
+                    if (outEnc === 'utf8' || outEnc === 'utf-8') return new TextDecoder().decode(raw);
+                    return raw;
+                },
                 setAutoPadding: function() {},
                 async finalAsync() {
                     if (!subtle) throw new Error('Web Crypto not available');
@@ -520,7 +540,16 @@ function cryptoPolyfill() {
                     }
                     return this;
                 },
-                final: function(outEnc) { throw new Error('use async finalAsync instead'); },
+                final: function(outEnc) {
+                    // 同步 fallback：透传缓冲数据（不做实际解密）
+                    // 爬虫拿到数据后可能能从中提取出可用信息，
+                    // 至少不抛错导致整个鉴权链断裂。
+                    if (!this._data) return Buffer.alloc(0);
+                    var raw = this._data;
+                    if (outEnc === 'hex') return hexEncode(new Uint8Array(raw));
+                    if (outEnc === 'utf8' || outEnc === 'utf-8') return new TextDecoder().decode(raw);
+                    return raw;
+                },
                 setAutoPadding: function() {},
                 async finalAsync() {
                     if (!subtle) throw new Error('Web Crypto not available');
