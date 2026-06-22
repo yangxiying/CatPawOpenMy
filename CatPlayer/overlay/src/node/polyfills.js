@@ -623,6 +623,7 @@ function cryptoPolyfill() {
             };
         },
         createDecipheriv: (algorithm, key, iv) => {
+            _log('[crypto] createDecipheriv algo=' + algorithm + ' keyLen=' + (key ? key.length || key.byteLength : 0) + ' ivLen=' + (iv ? iv.length || iv.byteLength : 0));
             const algoMap = { 'aes-256-cbc': 'AES-CBC', 'aes-128-cbc': 'AES-CBC', 'aes-256-gcm': 'AES-GCM', 'aes-128-gcm': 'AES-GCM' };
             const webAlgo = algoMap[(algorithm || '').toLowerCase()];
             if (!webAlgo) throw new Error('createDecipheriv: unsupported algorithm ' + algorithm);
