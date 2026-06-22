@@ -281,7 +281,20 @@ function httpRequestPolyfill(url, options) {
     const reqId = NEXT_REQ_ID++;
     const req = new EventEmitterPolyfill();
     req.method = options?.method || 'GET';
-    req.url = typeof url === 'string' ? url : url?.href || '/';
+    // 构造完整 URL：支持 http.request(url) 字符串、URL 对象、options 对象三种形式
+    if (typeof url === 'string') {
+        req.url = url;
+    } else if (url && url.href) {
+        req.url = url.href;
+    } else {
+        // http.request({hostname, port, path, ...}) 形式
+        const opts = url || options || {};
+        var protocol = opts.protocol || 'http:';
+        var hostname = opts.hostname || opts.host || '127.0.0.1';
+        var port = opts.port || (protocol === 'https:' ? 443 : 80);
+        var path = opts.path || '/';
+        req.url = protocol + '//' + hostname + (port ? ':' + port : '') + path;
+    }
     req.headers = options?.headers || {};
     req.setHeader = (k, v) => { req.headers[k.toLowerCase()] = v; };
     req.getHeader = (k) => req.headers[k.toLowerCase()];
