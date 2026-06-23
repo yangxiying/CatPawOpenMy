@@ -466,11 +466,22 @@ function _aesKeyExpansion256Enc(key) {
 function _aesDecryptBlock(block, key) {
     var st = new Array(16);
     for (var i = 0; i < 16; i++) st[i] = block[i];
-    var w = _aesKeyExpansion256(key);
-    // AddRoundKey round 14
-    for (var i = 0; i < 4; i++) st[i] ^= w[56+i]; // nr=14, nb*(nr+1)-nb=56
-    for (var r = 13; r >= 1; r--) {
-        // InvShiftRows
+    var w = _aesKeyExpansion256Enc(key);
+    var nr = 14;
+    // AddRoundKey (all 16 bytes): 列主序, 列 c 偏移 c*4
+    function addRoundKey(st, w, round) {
+        for (var c = 0; c < 4; c++) {
+            var word = w[round*4 + c];
+            var off = c * 4;
+            st[off]   ^= (word >>> 24) & 0xff;
+            st[off+1] ^= (word >>> 16) & 0xff;
+            st[off+2] ^= (word >>> 8) & 0xff;
+            st[off+3] ^= word & 0xff;
+        }
+    }
+    addRoundKey(st, w, nr);
+    for (var r = nr-1; r >= 1; r--) {
+        // InvShiftRows (rows: st[r], st[r+4], st[r+8], st[r+12])
         var t; t = st[13]; st[13] = st[9]; st[9] = st[5]; st[5] = st[1]; st[1] = t;
         t = st[2]; st[2] = st[10]; st[10] = t;
         t = st[6]; st[6] = st[14]; st[14] = t;
@@ -478,16 +489,15 @@ function _aesDecryptBlock(block, key) {
         // InvSubBytes
         for (var i = 0; i < 16; i++) st[i] = _AES_Si[st[i]];
         // AddRoundKey
-        for (var i = 0; i < 4; i++) st[i] ^= w[r*4+i];
-        // InvMixColumns
-        if (r > 0) {
-            for (var c = 0; c < 4; c++) {
-                var a = [st[c], st[c+4], st[c+8], st[c+12]];
-                st[c] = _aesGmul(a[0],14)^_aesGmul(a[3],9)^_aesGmul(a[2],13)^_aesGmul(a[1],11);
-                st[c+4] = _aesGmul(a[1],14)^_aesGmul(a[0],9)^_aesGmul(a[3],13)^_aesGmul(a[2],11);
-                st[c+8] = _aesGmul(a[2],14)^_aesGmul(a[1],9)^_aesGmul(a[0],13)^_aesGmul(a[3],11);
-                st[c+12] = _aesGmul(a[3],14)^_aesGmul(a[2],9)^_aesGmul(a[1],13)^_aesGmul(a[0],11);
-            }
+        addRoundKey(st, w, r);
+        // InvMixColumns (columns: st[c*4], st[c*4+1], st[c*4+2], st[c*4+3])
+        for (var c = 0; c < 4; c++) {
+            var off = c * 4;
+            var a = [st[off], st[off+1], st[off+2], st[off+3]];
+            st[off]   = _aesGmul(a[0],14)^_aesGmul(a[3],9)^_aesGmul(a[2],13)^_aesGmul(a[1],11);
+            st[off+1] = _aesGmul(a[1],14)^_aesGmul(a[0],9)^_aesGmul(a[3],13)^_aesGmul(a[2],11);
+            st[off+2] = _aesGmul(a[2],14)^_aesGmul(a[1],9)^_aesGmul(a[0],13)^_aesGmul(a[3],11);
+            st[off+3] = _aesGmul(a[3],14)^_aesGmul(a[2],9)^_aesGmul(a[1],13)^_aesGmul(a[0],11);
         }
     }
     // InvShiftRows last
@@ -495,10 +505,10 @@ function _aesDecryptBlock(block, key) {
     t = st[2]; st[2] = st[10]; st[10] = t;
     t = st[6]; st[6] = st[14]; st[14] = t;
     t = st[3]; st[3] = st[7]; st[7] = st[11]; st[11] = st[15]; st[15] = t;
-    // InvSubBytes
+    // InvSubBytes last
     for (var i = 0; i < 16; i++) st[i] = _AES_Si[st[i]];
-    // AddRoundKey last
-    for (var i = 0; i < 4; i++) st[i] ^= w[i];
+    // AddRoundKey last (round 0)
+    addRoundKey(st, w, 0);
     return st;
 }
 function _aesGmul(a, b) {
@@ -978,6 +988,7 @@ const MODULES = {
     // crypto-js polyfill：UC 网盘爬虫使用 require('crypto-js') 进行 AES-ECB 加密
     // 转换为使用嵌入式 AES 正向加密实现
     'crypto-js': (function() {
+        try { console.log('[crypto-js] shim loaded'); } catch(e) {}
         return {
             enc: {
                 Utf8: {
