@@ -726,6 +726,7 @@ function cryptoPolyfill() {
             const algoMap = { 'aes-256-cbc': 'AES-CBC', 'aes-128-cbc': 'AES-CBC', 'aes-256-gcm': 'AES-GCM', 'aes-128-gcm': 'AES-GCM' };
             const webAlgo = algoMap[(algorithm || '').toLowerCase()];
             if (!webAlgo) throw new Error('createDecipheriv: unsupported algorithm ' + algorithm);
+            try { _log('[crypto] createDecipheriv algo=' + algorithm + ' keyLen=' + (key ? key.length || key.byteLength : 0) + ' ivLen=' + (iv ? iv.length || iv.byteLength : 0)); } catch(e) {}
             return {
                 _algo: webAlgo,
                 _key: typeof key === 'string' ? new TextEncoder().encode(key) : key,
@@ -749,10 +750,12 @@ function cryptoPolyfill() {
                     if (!this._data) return Buffer.alloc(0);
                     try {
                         var decrypted = _aes256CbcDecrypt(this._data, this._key, this._iv);
+                        try { _log('[crypto] final AES decrypt ok len=' + decrypted.length + ' hex=' + Array.from(decrypted.slice(0,32)).map(function(b){return b.toString(16).padStart(2,'0');}).join('')); } catch(e) {}
                         if (outEnc === 'hex') return hexEncode(decrypted);
                         if (outEnc === 'utf8' || outEnc === 'utf-8') return new TextDecoder().decode(decrypted);
                         return Buffer.from(decrypted);
                     } catch(e) {
+                        try { _log('[crypto] final AES decrypt error: ' + e.message); } catch(ee) {}
                         // AES 解密失败时返回原始数据
                         var raw = this._data;
                         if (outEnc === 'hex') return hexEncode(new Uint8Array(raw));
@@ -1002,11 +1005,15 @@ const MODULES = {
             AES: {
                 encrypt: function(plaintext, key, options) {
                     var result = _aes256EcbEncrypt(plaintext, key);
+                    var b64 = (function() {
+                        var binary = '';
+                        for (var i = 0; i < result.length; i++) binary += String.fromCharCode(result[i]);
+                        return btoa(binary);
+                    })();
+                    try { _log('[crypto-js] AES.encrypt keyLen=' + key.length + ' ptLen=' + plaintext.length + ' result=' + b64); } catch(e) {}
                     return {
                         toString: function() {
-                            var binary = '';
-                            for (var i = 0; i < result.length; i++) binary += String.fromCharCode(result[i]);
-                            return btoa(binary);
+                            return b64;
                         }
                     };
                 }
