@@ -291,6 +291,10 @@ function createServerPolyfill(requestHandler) {
 
 function httpRequestPolyfill(url, options) {
     const reqId = NEXT_REQ_ID++;
+    // 调试：打印 UC 请求的完整 options
+    if (typeof url === 'string' && url.indexOf('uc.cn') >= 0) {
+        try { _log('[proxy] req #' + reqId + ' httpRequest url=' + url + ' optionsKeys=' + Object.keys(options||{}).join(',') + ' hasHeaders=' + (options&&options.headers?'yes':'no') + ' method=' + (options&&options.method)); } catch(e) {}
+    }
     const req = new EventEmitterPolyfill();
     req.method = options?.method || 'GET';
     // 构造完整 URL：支持 http.request(url) 字符串、URL 对象、options 对象三种形式
