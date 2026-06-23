@@ -315,7 +315,7 @@ function httpRequestPolyfill(url, options) {
         var path = opts.path || '/';
         req.url = protocol + '//' + hostname + (port ? ':' + port : '') + path;
     }
-    req.headers = options?.headers || {};
+    req.headers = options?.headers || (url && typeof url === 'object' && url.headers) || {};
     // 调试：打印 UC 请求的完整 options（在 URL 构造之后，用 req.url 判断）
     if (req.url && req.url.indexOf('uc.cn') >= 0) {
         try {
