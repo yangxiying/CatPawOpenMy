@@ -291,10 +291,6 @@ function createServerPolyfill(requestHandler) {
 
 function httpRequestPolyfill(url, options) {
     const reqId = NEXT_REQ_ID++;
-    // 调试：打印 UC 请求的完整 options
-    if (typeof url === 'string' && url.indexOf('uc.cn') >= 0) {
-        try { _log('[proxy] req #' + reqId + ' httpRequest url=' + url + ' optionsKeys=' + Object.keys(options||{}).join(',') + ' hasHeaders=' + (options&&options.headers?'yes':'no') + ' method=' + (options&&options.method)); } catch(e) {}
-    }
     const req = new EventEmitterPolyfill();
     req.method = options?.method || 'GET';
     // 构造完整 URL：支持 http.request(url) 字符串、URL 对象、options 对象三种形式
@@ -320,14 +316,12 @@ function httpRequestPolyfill(url, options) {
         req.url = protocol + '//' + hostname + (port ? ':' + port : '') + path;
     }
     req.headers = options?.headers || {};
-    // 调试：打印 UC 请求的完整请求头
+    // 调试：打印 UC 请求的完整 options（在 URL 构造之后，用 req.url 判断）
     if (req.url && req.url.indexOf('uc.cn') >= 0) {
         try {
-            var _hd = [];
-            for (var _k in req.headers) {
-                if (req.headers.hasOwnProperty(_k)) _hd.push(_k + '=' + String(req.headers[_k]).slice(0, 40));
-            }
-            _log('[proxy] req #' + reqId + ' ALL headers: ' + _hd.join(', '));
+            var _optKeys = typeof options === 'object' && options !== null ? Object.keys(options).join(',') : 'no-options';
+            var _hasHd = options && options.headers ? (typeof options.headers === 'object' ? Object.keys(options.headers).join(',') : 'non-object') : 'no';
+            _log('[proxy] req #' + reqId + ' DIAG url=' + req.url + ' optionsKeys=[' + _optKeys + '] headerKeys=[' + _hasHd + '] method=' + (options && options.method || req.method));
         } catch(e) {}
     }
     req.setHeader = (k, v) => { req.headers[k.toLowerCase()] = v; };
