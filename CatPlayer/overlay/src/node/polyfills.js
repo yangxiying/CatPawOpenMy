@@ -16,7 +16,7 @@ function POLYFILL_SOURCE() {
 var _log = function (m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: '[WV] ' + m })); } catch (e) {} };
 window._log = _log;
 
-_log('polyfill start');
+_log('polyfill start v3');
 
 // ============================================================
 // 0. 全局 polyfill
@@ -988,7 +988,7 @@ const MODULES = {
     // crypto-js polyfill：UC 网盘爬虫使用 require('crypto-js') 进行 AES-ECB 加密
     // 转换为使用嵌入式 AES 正向加密实现
     'crypto-js': (function() {
-        try { console.log('[crypto-js] shim loaded'); } catch(e) {}
+        try { _log('[crypto-js] shim loaded v3'); } catch(e) {}
         return {
             enc: {
                 Utf8: {
