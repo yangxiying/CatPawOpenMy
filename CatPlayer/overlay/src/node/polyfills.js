@@ -1232,6 +1232,17 @@ try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: 
 })();
 
 // 通知 RN polyfill 已就绪，可以注入 bundle
+// 全局错误捕获：记录所有未捕获异常
+try { window.addEventListener('error', function(e) {
+    var msg = e.error && e.error.message ? e.error.message : (e.message || e);
+    try { _log('[UNCAUGHT] ' + msg); } catch(ee) {}
+    return true;
+}); } catch(e) {}
+try { window.addEventListener('unhandledrejection', function(e) {
+    var msg = e.reason && e.reason.message ? e.reason.message : String(e.reason || e);
+    try { _log('[UNHANDLED] ' + msg); } catch(ee) {}
+}); } catch(e) {}
+
 try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {
     try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'error', error: 'failed to send ready msg' })); } catch {}
 }
