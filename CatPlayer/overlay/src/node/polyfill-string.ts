@@ -436,6 +436,26 @@ function _aesKeyExpansion256(key) {
     }
     return w;
 }
+// AES-256 加密用密钥扩展（使用 S-box，与解密用 _AES_Si 的反向扩展不同）
+function _aesKeyExpansion256Enc(key) {
+    var nk = 8, nb = 4, nr = 14;
+    var w = new Uint32Array(nb*(nr+1));
+    var i = 0;
+    while (i < nk) { w[i] = (key[4*i]<<24)|(key[4*i+1]<<16)|(key[4*i+2]<<8)|key[4*i+3]; i++; }
+    i = nk;
+    while (i < nb*(nr+1)) {
+        var t = w[i-1];
+        if (i % nk === 0) {
+            t = (_AES_S[(t>>>16)&0xff]<<24)|(_AES_S[(t>>>8)&0xff]<<16)|(_AES_S[t&0xff]<<8)|_AES_S[t>>>24];
+            t ^= (_AES_rcon[i/nk]<<24);
+        } else if (nk > 6 && i % nk === 4) {
+            t = (_AES_S[t>>>24]<<24)|(_AES_S[(t>>>16)&0xff]<<16)|(_AES_S[(t>>>8)&0xff]<<8)|_AES_S[t&0xff];
+        }
+        w[i] = w[i-nk] ^ t;
+        i++;
+    }
+    return w;
+}
 function _aesDecryptBlock(block, key) {
     var st = new Array(16);
     for (var i = 0; i < 16; i++) st[i] = block[i];
@@ -479,17 +499,75 @@ function _aesGmul(a, b) {
     for (var i = 0; i < 8; i++) { if (b & 1) p ^= a; var hi = a & 0x80; a = (a << 1) & 0xff; if (hi) a ^= 0x1b; b >>= 1; }
     return p;
 }
-function _aes256CbcDecrypt(encrypted, key, iv) {
-    var result = [];
-    var prev = iv.slice();
-    for (var i = 0; i < encrypted.length; i += 16) {
-        var block = encrypted.slice(i, i+16);
-        var decrypted = _aesDecryptBlock(block, key);
-        for (var j = 0; j < 16; j++) result.push(decrypted[j] ^ prev[j]);
-        prev = block;
+// ============================================================
+// AES 正向加密 (SubBytes, ShiftRows, MixColumns, AddRoundKey)
+// 状态布局：列主序, st[col*4+row] = byte at (row,col)
+// ============================================================
+function _aesEncryptBlock(st, key) {
+    var w = _aesKeyExpansion256Enc(key);
+    // AddRoundKey round 0
+    for (var c = 0; c < 4; c++) {
+        var word = w[c];
+        st[c*4]   ^= (word >>> 24) & 0xff;
+        st[c*4+1] ^= (word >>> 16) & 0xff;
+        st[c*4+2] ^= (word >>> 8) & 0xff;
+        st[c*4+3] ^= word & 0xff;
     }
-    // Remove PKCS7 padding
-    if (result.length > 0) { var padLen = result[result.length-1]; if (padLen > 0 && padLen <= 16) result = result.slice(0, result.length - padLen); }
+    for (var r = 1; r <= 13; r++) {
+        // SubBytes (use S-box)
+        for (var i = 0; i < 16; i++) st[i] = _AES_S[st[i]];
+        // ShiftRows
+        var t;
+        t = st[1]; st[1] = st[5]; st[5] = st[9]; st[9] = st[13]; st[13] = t; // row 1: left 1
+        t = st[2]; st[2] = st[10]; st[10] = t; // row 2: swap [0]↔[2]
+        t = st[6]; st[6] = st[14]; st[14] = t; // row 2: swap [1]↔[3]
+        t = st[3]; st[3] = st[15]; st[15] = st[11]; st[11] = st[7]; st[7] = t; // row 3: left 3
+        // MixColumns (forward)
+        for (var c = 0; c < 4; c++) {
+            var a0 = st[c*4], a1 = st[c*4+1], a2 = st[c*4+2], a3 = st[c*4+3];
+            st[c*4]   = _aesGmul(a0,2) ^ _aesGmul(a1,3) ^ a2 ^ a3;
+            st[c*4+1] = a0 ^ _aesGmul(a1,2) ^ _aesGmul(a2,3) ^ a3;
+            st[c*4+2] = a0 ^ a1 ^ _aesGmul(a2,2) ^ _aesGmul(a3,3);
+            st[c*4+3] = _aesGmul(a0,3) ^ a1 ^ a2 ^ _aesGmul(a3,2);
+        }
+        // AddRoundKey
+        for (var c = 0; c < 4; c++) {
+            var word = w[r*4+c];
+            st[c*4]   ^= (word >>> 24) & 0xff;
+            st[c*4+1] ^= (word >>> 16) & 0xff;
+            st[c*4+2] ^= (word >>> 8) & 0xff;
+            st[c*4+3] ^= word & 0xff;
+        }
+    }
+    // Final round (r=14): SubBytes + ShiftRows + AddRoundKey (no MixColumns)
+    for (var i = 0; i < 16; i++) st[i] = _AES_S[st[i]];
+    var t;
+    t = st[1]; st[1] = st[5]; st[5] = st[9]; st[9] = st[13]; st[13] = t;
+    t = st[2]; st[2] = st[10]; st[10] = t;
+    t = st[6]; st[6] = st[14]; st[14] = t;
+    t = st[3]; st[3] = st[15]; st[15] = st[11]; st[11] = st[7]; st[7] = t;
+    for (var c = 0; c < 4; c++) {
+        var word = w[56+c]; // round 14
+        st[c*4]   ^= (word >>> 24) & 0xff;
+        st[c*4+1] ^= (word >>> 16) & 0xff;
+        st[c*4+2] ^= (word >>> 8) & 0xff;
+        st[c*4+3] ^= word & 0xff;
+    }
+    return st;
+}
+function _aes256EcbEncrypt(plaintext, key) {
+    // Add PKCS7 padding
+    var padLen = 16 - (plaintext.length % 16);
+    var padded = new Uint8Array(plaintext.length + padLen);
+    padded.set(plaintext);
+    for (var i = plaintext.length; i < padded.length; i++) padded[i] = padLen;
+    var result = [];
+    for (var i = 0; i < padded.length; i += 16) {
+        var block = [];
+        for (var j = 0; j < 16; j++) block[j] = padded[i+j];
+        block = _aesEncryptBlock(block, key);
+        for (var j = 0; j < 16; j++) result.push(block[j]);
+    }
     return new Uint8Array(result);
 }
 function _aes256CbcEncrypt(plaintext, key, iv) {
@@ -503,11 +581,23 @@ function _aes256CbcEncrypt(plaintext, key, iv) {
     for (var i = 0; i < padded.length; i += 16) {
         var block = [];
         for (var j = 0; j < 16; j++) block[j] = padded[i+j] ^ prev[j];
-        // For encrypt we'd use forward AES, but for polyfill we only need decrypt
-        // Forward AES not implemented - this is a placeholder
+        block = _aesEncryptBlock(block, key);
         for (var j = 0; j < 16; j++) result.push(block[j]);
-        prev = result.slice(result.length-16);
+        prev = block.slice();
     }
+    return new Uint8Array(result);
+}
+function _aes256CbcDecrypt(encrypted, key, iv) {
+    var result = [];
+    var prev = iv.slice();
+    for (var i = 0; i < encrypted.length; i += 16) {
+        var block = encrypted.slice(i, i+16);
+        var decrypted = _aesDecryptBlock(block, key);
+        for (var j = 0; j < 16; j++) result.push(decrypted[j] ^ prev[j]);
+        prev = block;
+    }
+    // Remove PKCS7 padding
+    if (result.length > 0) { var padLen = result[result.length-1]; if (padLen > 0 && padLen <= 16) result = result.slice(0, result.length - padLen); }
     return new Uint8Array(result);
 }
 function cryptoPolyfill() {
@@ -878,6 +968,33 @@ const MODULES = {
     },
     'module': { Module: class Module { static _resolveFilename() { return ''; } static _cache = {}; _compile() {} }, createRequire: (filename) => customRequire },
     'buffer': { Buffer: globalThis.Buffer, Blob: class Blob { constructor(parts, opts) { this._parts = parts || []; this.type = opts?.type || ''; } async arrayBuffer() { return new ArrayBuffer(0); } get size() { return 0; } slice() { return new Blob(); } stream() { return new EventEmitterPolyfill(); } text() { return Promise.resolve(''); } }, File: class File extends (globalThis.Blob || Blob) { constructor(parts, name, opts) { super(parts, opts); this.name = name; this.lastModified = opts?.lastModified || Date.now(); } }, kMaxLength: 2147483647, INSPECT_MAX_BYTES: 50, SlowBuffer: (size) => Buffer.alloc(size), constants: { MAX_STRING_LENGTH: 1073741790, MAX_LENGTH: 2147483647 } },
+    // crypto-js polyfill：UC 网盘爬虫使用 require('crypto-js') 进行 AES-ECB 加密
+    // 转换为使用嵌入式 AES 正向加密实现
+    'crypto-js': (function() {
+        return {
+            enc: {
+                Utf8: {
+                    parse: function(str) {
+                        return new Uint8Array(new TextEncoder().encode(str));
+                    }
+                }
+            },
+            mode: { ECB: {} },
+            pad: { Pkcs7: {} },
+            AES: {
+                encrypt: function(plaintext, key, options) {
+                    var result = _aes256EcbEncrypt(plaintext, key);
+                    return {
+                        toString: function() {
+                            var binary = '';
+                            for (var i = 0; i < result.length; i++) binary += String.fromCharCode(result[i]);
+                            return btoa(binary);
+                        }
+                    };
+                }
+            }
+        };
+    })(),
 };
 
 // CDN global fallback: website source bundle 内部 require('react') 等走 polyfill
