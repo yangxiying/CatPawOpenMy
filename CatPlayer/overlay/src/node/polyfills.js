@@ -337,8 +337,49 @@ function httpRequestPolyfill(url, options) {
         // ================================================================
         if (req.url && req.url.indexOf('open-api-drive.uc.cn') >= 0) {
             _log('[proxy] req #' + reqId + ' UC request intercepted, returning mock success');
-            var mockBody = JSON.stringify({ code: 0, msg: '操作成功', data: { total: 0, list: [] } });
-            PENDING_REQUESTS.get(reqId)?.resolve(mockBody, 200, { 'content-type': 'application/json' });
+            var mockBuf = JSON.stringify({ code: 0, msg: '操作成功', data: { total: 0, list: [] } });
+            // 直接构造 IncomingMessage 并触发 response 事件（不走 RN proxy）
+            var inRes = {
+                statusCode: 200,
+                headers: { 'content-type': 'application/json' },
+                _data: mockBuf,
+                setEncoding: function(enc) {},
+                resume: function() { return inRes; },
+                pause: function() {},
+                isPaused: function() { return false; },
+                read: function(size) { return mockBuf.length ? mockBuf : null; },
+                pipe: function(dest) { dest.end(mockBuf); return dest; },
+                unpipe: function() {},
+                unshift: function() {},
+                wrap: function() {},
+                destroy: function() {},
+                destroySoon: function() {},
+                addListener: function(ev, cb) { return inRes.on(ev, cb); },
+                removeListener: function(ev, cb) { return inRes; },
+                removeAllListeners: function() { return inRes; },
+                listeners: function(ev) { return []; },
+                listenerCount: function(ev) { return 0; },
+                eventNames: function() { return []; },
+                getMaxListeners: function() { return 10; },
+                setMaxListeners: function() { return inRes; },
+                on: function(ev, cb) {
+                    if (ev === 'data' && mockBuf.length > 0) { cb(mockBuf); }
+                    if (ev === 'end') setTimeout(cb, 0);
+                    if (ev === 'close') setTimeout(cb, 0);
+                    if (ev === 'error') { /* ignore */ }
+                    if (ev === 'readable') { /* ignore */ }
+                    return inRes;
+                },
+                once: function(ev, cb) {
+                    var wrapped = function() { cb.apply(this, arguments); };
+                    inRes.on(ev, wrapped);
+                    return inRes;
+                },
+                emit: function() { return true; },
+                write: function() {},
+                end: function() {},
+            };
+            req.emit('response', inRes);
             return;
         }
         
@@ -362,14 +403,12 @@ function httpRequestPolyfill(url, options) {
             }
             if (_hd.length > 0) _log('[proxy] req #' + reqId + ' headers: ' + _hd.join(', '));
             PENDING_REQUESTS.set(reqId, {
-                resolve: (bodyStr, statusCode, headers) => {
-                    // 将字符串包装为 IncomingMessage 兼容对象（完整 Readable stream 接口）
+                resolve: function(bodyStr, statusCode, headers) {
                     var buf = bodyStr || '';
                     var inRes = {
                         statusCode: statusCode || 200,
                         headers: headers || {},
                         _data: buf,
-                        // Readable stream 方法 (来自 http.IncomingMessage)
                         setEncoding: function(enc) {},
                         resume: function() { return inRes; },
                         pause: function() {},
@@ -393,7 +432,7 @@ function httpRequestPolyfill(url, options) {
                             if (ev === 'data' && buf.length > 0) { cb(buf); }
                             if (ev === 'end') setTimeout(cb, 0);
                             if (ev === 'close') setTimeout(cb, 0);
-                            if (ev === 'error') { /* ignore, no error */ }
+                            if (ev === 'error') { /* ignore */ }
                             if (ev === 'readable') { /* ignore */ }
                             return inRes;
                         },
@@ -403,13 +442,12 @@ function httpRequestPolyfill(url, options) {
                             return inRes;
                         },
                         emit: function() { return true; },
-                        // http.ServerResponse 兼容
                         write: function() {},
                         end: function() {},
                     };
                     req.emit('response', inRes);
                 },
-                reject: (e) => { req.emit('error', e); },
+                reject: function(e) { req.emit('error', e); },
             });
         } catch (e) { req.emit('error', e); }
     };
