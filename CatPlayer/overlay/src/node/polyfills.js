@@ -329,6 +329,19 @@ function httpRequestPolyfill(url, options) {
     req.write = (data) => { req._body = (req._body || '') + data; };
     req.end = (data) => {
         if (data) req._body = (req._body || '') + data;
+        
+        // ================================================================
+        // 拦截 UC 网盘请求：远程 bundle 的 douban init 会异步请求 UC 文件列表，
+        // 但 UC 鉴权失败会导致后续 /home 请求永久挂起（bridge request timeout）。
+        // 直接返回假成功响应，避免阻塞整个调用链。
+        // ================================================================
+        if (req.url && req.url.indexOf('open-api-drive.uc.cn') >= 0) {
+            _log('[proxy] req #' + reqId + ' UC request intercepted, returning mock success');
+            var mockBody = JSON.stringify({ code: 0, msg: '操作成功', data: { total: 0, list: [] } });
+            PENDING_REQUESTS.get(reqId)?.resolve(mockBody, 200, { 'content-type': 'application/json' });
+            return;
+        }
+        
         // 发送请求到 RN
         try {
             window.ReactNativeWebView?.postMessage(JSON.stringify({
