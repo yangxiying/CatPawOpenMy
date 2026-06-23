@@ -595,6 +595,17 @@ function _aes256EcbEncrypt(plaintext, key) {
     }
     return new Uint8Array(result);
 }
+function _aes256EcbDecrypt(encrypted, key) {
+    var result = [];
+    for (var i = 0; i < encrypted.length; i += 16) {
+        var block = encrypted.slice(i, i+16);
+        var decrypted = _aesDecryptBlock(block, key);
+        for (var j = 0; j < 16; j++) result.push(decrypted[j]);
+    }
+    // Remove PKCS7 padding
+    if (result.length > 0) { var padLen = result[result.length-1]; if (padLen > 0 && padLen <= 16) result = result.slice(0, result.length - padLen); }
+    return new Uint8Array(result);
+}
 function _aes256CbcEncrypt(plaintext, key, iv) {
     // Add PKCS7 padding
     var padLen = 16 - (plaintext.length % 16);
@@ -731,15 +742,18 @@ function cryptoPolyfill() {
             };
         },
         createDecipheriv: (algorithm, key, iv) => {
+            const algo = (algorithm || '').toLowerCase();
+            const isECB = algo.indexOf('ecb') >= 0;
             const algoMap = { 'aes-256-cbc': 'AES-CBC', 'aes-128-cbc': 'AES-CBC', 'aes-256-gcm': 'AES-GCM', 'aes-128-gcm': 'AES-GCM' };
-            const webAlgo = algoMap[(algorithm || '').toLowerCase()];
-            if (!webAlgo) throw new Error('createDecipheriv: unsupported algorithm ' + algorithm);
+            const webAlgo = algoMap[algo];
+            if (!webAlgo && !isECB) throw new Error('createDecipheriv: unsupported algorithm ' + algorithm);
             try { _log('[crypto] createDecipheriv algo=' + algorithm + ' keyLen=' + (key ? key.length || key.byteLength : 0) + ' ivLen=' + (iv ? iv.length || iv.byteLength : 0)); } catch(e) {}
             return {
-                _algo: webAlgo,
+                _algo: isECB ? 'ECB' : webAlgo,
                 _key: typeof key === 'string' ? new TextEncoder().encode(key) : key,
                 _iv: typeof iv === 'string' ? new TextEncoder().encode(iv) : iv,
                 _data: null,
+                _isECB: isECB,
                 update: function(data, inEnc, outEnc) {
                     // 支持 hex/base64 输入编码
                     if (inEnc === 'hex' && typeof data === 'string') {
@@ -754,13 +768,19 @@ function cryptoPolyfill() {
                     return this;
                 },
                 final: function(outEnc) {
-                    // 同步 AES-256-CBC 解密（纯 JS 实现）
+                    // 同步 AES 解密（纯 JS 实现）
                     if (!this._data) return Buffer.alloc(0);
                     try {
-                        var decrypted = _aes256CbcDecrypt(this._data, this._key, this._iv);
-                        try { _log('[crypto] final AES decrypt ok len=' + decrypted.length + ' hex=' + Array.from(decrypted.slice(0,32)).map(function(b){return b.toString(16).padStart(2,'0');}).join('')); } catch(e) {}
+                        var decrypted;
+                        if (this._isECB) {
+                            decrypted = _aes256EcbDecrypt(this._data, this._key);
+                        } else {
+                            decrypted = _aes256CbcDecrypt(this._data, this._key, this._iv);
+                        }
+                        try { _log('[crypto] final AES decrypt ok algo=' + (this._isECB ? 'ECB' : 'CBC') + ' len=' + decrypted.length + ' hex=' + Array.from(decrypted.slice(0,32)).map(function(b){return b.toString(16).padStart(2,'0');}).join('')); } catch(e) {}
                         if (outEnc === 'hex') return hexEncode(decrypted);
                         if (outEnc === 'utf8' || outEnc === 'utf-8') return new TextDecoder().decode(decrypted);
+                        if (outEnc === 'base64') return btoa(String.fromCharCode(...Array.from(decrypted)));
                         return Buffer.from(decrypted);
                     } catch(e) {
                         try { _log('[crypto] final AES decrypt error: ' + e.message); } catch(ee) {}
@@ -768,6 +788,7 @@ function cryptoPolyfill() {
                         var raw = this._data;
                         if (outEnc === 'hex') return hexEncode(new Uint8Array(raw));
                         if (outEnc === 'utf8' || outEnc === 'utf-8') return new TextDecoder().decode(raw);
+                        if (outEnc === 'base64') return btoa(String.fromCharCode(...Array.from(new Uint8Array(raw))));
                         return raw;
                     }
                 },
