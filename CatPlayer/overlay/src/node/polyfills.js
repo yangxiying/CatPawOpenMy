@@ -316,6 +316,16 @@ function httpRequestPolyfill(url, options) {
         req.url = protocol + '//' + hostname + (port ? ':' + port : '') + path;
     }
     req.headers = options?.headers || {};
+    // 调试：打印 UC 请求的完整请求头
+    if (req.url && req.url.indexOf('uc.cn') >= 0) {
+        try {
+            var _hd = [];
+            for (var _k in req.headers) {
+                if (req.headers.hasOwnProperty(_k)) _hd.push(_k + '=' + String(req.headers[_k]).slice(0, 40));
+            }
+            _log('[proxy] req #' + reqId + ' ALL headers: ' + _hd.join(', '));
+        } catch(e) {}
+    }
     req.setHeader = (k, v) => { req.headers[k.toLowerCase()] = v; };
     req.getHeader = (k) => req.headers[k.toLowerCase()];
     req.write = (data) => { req._body = (req._body || '') + data; };
