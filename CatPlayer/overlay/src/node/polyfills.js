@@ -1038,6 +1038,7 @@ var WINDOW_FALLBACK = {
 var _modCache = {};
 
 function customRequire(moduleName) {
+    try { _log('[require] ' + moduleName); } catch(e) {}
     var mod = MODULES[moduleName];
     if (!mod) {
         var stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
