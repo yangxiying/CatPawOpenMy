@@ -6,6 +6,7 @@ import {
 import { StorageService } from '../../storage/StorageService';
 import type { SourceItem } from '../../storage/StorageService';
 import NodeService from '../../node/NodeService';
+import { DLNAPicker } from '../../player/DLNACasting';
 
 type PlayerType = 'builtin' | 'mpv' | 'mdk';
 
@@ -550,6 +551,9 @@ export default function Settings() {
                     </View>
                 </View>
             </Modal>
+
+            {/* ═══════ 弹窗：DLNA 投屏 ═══════ */}
+            <DLNAPicker visible={showDLNAModal} onClose={() => setShowDLNAModal(false)} castUrl={undefined} />
         </ScrollView>
     );
 }
