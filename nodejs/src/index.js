@@ -1,5 +1,6 @@
 import fastify from 'fastify';
 import router from './router.js';
+import hlsProxy from './proxy/hls.ts';
 import { JsonDB, Config } from 'node-json-db';
 import axios from 'axios';
 import path from 'path';
@@ -104,6 +105,7 @@ export async function start(config) {
     // 推荐使用NODE_PATH做db存储的更目录，这个目录在应用中清除缓存时会被清空
     server.db = new JsonDB(new Config((process.env['NODE_PATH'] || '.') + '/db.json', true, true, '/', true));
     server.register(router);
+    server.register(hlsProxy, { prefix: '/proxy/hls', upstreamTimeout: 15000 });
     
     // 注册远程 bundle 管理端点
     server.post('/admin/load-remote', async (req, reply) => {
