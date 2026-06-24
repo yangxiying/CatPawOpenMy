@@ -1,5 +1,6 @@
 import * as HLS from 'hls-parser';
 import req from '../../util/req.js';
+import { resolvePlayUrl } from '../util/play-chain.js';
 
 let url = '';
 let categories = [];
@@ -166,36 +167,54 @@ async function proxy(inReq, outResp) {
 
 async function play(inReq, _outResp) {
     const id = inReq.body.id;
-    if (id.indexOf('.m3u8') < 0) {
-        const sniffer = await inReq.server.messageToDart({
-            action: 'sniff',
-            opt: {
-                url: id,
-                timeout: 10000,
-                rule: 'http((?!http).){12,}?\\.m3u8(?!\\?)',
-            },
-        });
-        if (sniffer && sniffer.url) {
-            const hds = {};
-            if (sniffer.headers) {
-                if (sniffer.headers['user-agent']) {
-                    hds['User-Agent'] = sniffer.headers['user-agent'];
-                }
-                if (sniffer.headers['referer']) {
-                    hds['Referer'] = sniffer.headers['referer'];
-                }
-            }
+
+    // 1. 尝试解码（NBY/jqq/parser）
+    const decoded = await resolvePlayUrl(id);
+    if (decoded?.url && decoded.url !== id) {
+        // 解码成功，继续处理 decoded.url
+        const finalUrl = decoded.url;
+        if (finalUrl.indexOf('.m3u8') >= 0) {
             return {
                 parse: 0,
-                url: sniffer.url,
-                header: hds,
+                url: inReq.server.address().dynamic + inReq.server.prefix + '/proxy/hls/' + encodeURIComponent(finalUrl) + '/.m3u8',
+                header: decoded.header || {},
             };
         }
+        return { parse: 0, url: finalUrl, header: decoded.header || {} };
     }
-    return {
-        parse: 0,
-        url: inReq.server.address().dynamic + inReq.server.prefix + '/proxy/hls/' + encodeURIComponent(id) + '/.m3u8',
-    };
+
+    // 2. 原始 id 含 m3u8 — 走 proxy
+    if (id.indexOf('.m3u8') >= 0) {
+        return {
+            parse: 0,
+            url: inReq.server.address().dynamic + inReq.server.prefix + '/proxy/hls/' + encodeURIComponent(id) + '/.m3u8',
+        };
+    }
+
+    // 3. 非 m3u8 — 走嗅探
+    const sniffer = await inReq.server.messageToDart({
+        action: 'sniff',
+        opt: {
+            url: id,
+            timeout: 10000,
+            rule: 'http((?!http).){12,}?\\.m3u8(?!\\?)',
+        },
+    });
+    if (sniffer && sniffer.url) {
+        const hds = {};
+        if (sniffer.headers) {
+            if (sniffer.headers['user-agent']) hds['User-Agent'] = sniffer.headers['user-agent'];
+            if (sniffer.headers['referer']) hds['Referer'] = sniffer.headers['referer'];
+        }
+        return {
+            parse: 0,
+            url: sniffer.url,
+            header: hds,
+        };
+    }
+
+    // 4. 直通
+    return { parse: 0, url: id };
 }
 
 async function search(inReq, _outResp) {
