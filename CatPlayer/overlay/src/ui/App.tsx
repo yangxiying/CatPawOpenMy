@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import Boot from './screens/Boot';
 import Sites from './screens/Sites';
+import Demo from './screens/Demo';
 import Category from './screens/Category';
 import Detail from './screens/Detail';
 import Player from './screens/Player';
@@ -24,7 +25,7 @@ export type Nav = {
 const NavContext = createContext<Nav>(null as any);
 export const useNav = () => useContext(NavContext);
 
-const SCREENS: Record<string, React.ComponentType<any>> = { Boot, Sites, Category, Detail, Player, Favorites, History, Settings, Search };
+const SCREENS: Record<string, React.ComponentType<any>> = { Boot, Sites, Demo, Category, Detail, Player, Favorites, History, Settings, Search };
 
 type Route = { name: string; params?: any };
 
@@ -37,7 +38,7 @@ function isTabRoot(name: string): boolean {
 }
 
 export default function App() {
-    const [stack, setStack] = useState<Route[]>([{ name: 'Boot' }]);
+    const [stack, setStack] = useState<Route[]>([{ name: 'Demo' }]);
     const [activeTab, setActiveTab] = useState('home');
     const [isWebSrc, setIsWebSrc] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
