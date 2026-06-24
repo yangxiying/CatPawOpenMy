@@ -16,7 +16,7 @@ function POLYFILL_SOURCE() {
 var _log = function (m) { try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: '[WV] ' + m })); } catch (e) {} };
 window._log = _log;
 
-_log('polyfill start v3');
+_log('polyfill start');
 
 // ============================================================
 // 0. 全局 polyfill
@@ -316,14 +316,6 @@ function httpRequestPolyfill(url, options) {
         req.url = protocol + '//' + hostname + (port ? ':' + port : '') + path;
     }
     req.headers = options?.headers || (url && typeof url === 'object' && url.headers) || {};
-    // 调试：打印 UC 请求的完整 options（在 URL 构造之后，用 req.url 判断）
-    if (req.url && req.url.indexOf('uc.cn') >= 0) {
-        try {
-            var _optKeys = typeof options === 'object' && options !== null ? Object.keys(options).join(',') : 'no-options';
-            var _hasHd = options && options.headers ? (typeof options.headers === 'object' ? Object.keys(options.headers).join(',') : 'non-object') : 'no';
-            _log('[proxy] req #' + reqId + ' DIAG url=' + req.url + ' optionsKeys=[' + _optKeys + '] headerKeys=[' + _hasHd + '] method=' + (options && options.method || req.method));
-        } catch(e) {}
-    }
     req.setHeader = (k, v) => { req.headers[k.toLowerCase()] = v; };
     req.getHeader = (k) => req.headers[k.toLowerCase()];
     req.write = (data) => { req._body = (req._body || '') + data; };
@@ -798,7 +790,6 @@ function cryptoPolyfill() {
             const algoMap = { 'aes-256-cbc': 'AES-CBC', 'aes-128-cbc': 'AES-CBC', 'aes-256-gcm': 'AES-GCM', 'aes-128-gcm': 'AES-GCM' };
             const webAlgo = algoMap[algo];
             if (!webAlgo && !isECB) throw new Error('createDecipheriv: unsupported algorithm ' + algorithm);
-            try { _log('[crypto] createDecipheriv algo=' + algorithm + ' keyLen=' + (key ? key.length || key.byteLength : 0) + ' ivLen=' + (iv ? iv.length || iv.byteLength : 0)); } catch(e) {}
             return {
                 _algo: isECB ? 'ECB' : webAlgo,
                 _key: typeof key === 'string' ? new TextEncoder().encode(key) : key,
@@ -828,13 +819,16 @@ function cryptoPolyfill() {
                         } else {
                             decrypted = _aes256CbcDecrypt(this._data, this._key, this._iv);
                         }
-                        try { _log('[crypto] final AES decrypt ok algo=' + (this._isECB ? 'ECB' : 'CBC') + ' len=' + decrypted.length + ' hex=' + Array.from(decrypted.slice(0,32)).map(function(b){return b.toString(16).padStart(2,'0');}).join('')); } catch(e) {}
+                        try {
+                            if (decrypted.length > 0) {
+                                // decrypt OK
+                            }
+                        } catch(e) {}
                         if (outEnc === 'hex') return hexEncode(decrypted);
                         if (outEnc === 'utf8' || outEnc === 'utf-8') return new TextDecoder().decode(decrypted);
                         if (outEnc === 'base64') return btoa(String.fromCharCode(...Array.from(decrypted)));
                         return Buffer.from(decrypted);
                     } catch(e) {
-                        try { _log('[crypto] final AES decrypt error: ' + e.message); } catch(ee) {}
                         // AES 解密失败时返回原始数据
                         var raw = this._data;
                         if (outEnc === 'hex') return hexEncode(new Uint8Array(raw));
@@ -1071,7 +1065,6 @@ const MODULES = {
     // crypto-js polyfill：UC 网盘爬虫使用 require('crypto-js') 进行 AES-ECB 加密
     // 转换为使用嵌入式 AES 正向加密实现
     'crypto-js': (function() {
-        try { _log('[crypto-js] shim loaded v3'); } catch(e) {}
         return {
             enc: {
                 Utf8: {
@@ -1118,7 +1111,6 @@ var WINDOW_FALLBACK = {
 var _modCache = {};
 
 function customRequire(moduleName) {
-    try { _log('[require] ' + moduleName); } catch(e) {}
     var mod = MODULES[moduleName];
     if (!mod) {
         var stripped = moduleName.startsWith('node:') ? moduleName.slice(5) : null;
@@ -1312,17 +1304,6 @@ try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: 
 })();
 
 // 通知 RN polyfill 已就绪，可以注入 bundle
-// 全局错误捕获：记录所有未捕获异常
-try { window.addEventListener('error', function(e) {
-    var msg = e.error && e.error.message ? e.error.message : (e.message || e);
-    try { _log('[UNCAUGHT] ' + msg); } catch(ee) {}
-    return true;
-}); } catch(e) {}
-try { window.addEventListener('unhandledrejection', function(e) {
-    var msg = e.reason && e.reason.message ? e.reason.message : String(e.reason || e);
-    try { _log('[UNHANDLED] ' + msg); } catch(ee) {}
-}); } catch(e) {}
-
 try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' })); } catch {
     try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'error', error: 'failed to send ready msg' })); } catch {}
 }
