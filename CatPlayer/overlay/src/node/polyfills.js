@@ -1286,8 +1286,8 @@ try { window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', msg: 
     var _origFetch = window.fetch;
     window.fetch = function(input, init) {
         var url = typeof input === 'string' ? input : (input && input.url) || '';
-        // API 请求匹配：/spider/、/config、/check
-        if (url && (url.indexOf('/spider/') >= 0 || url === '/config' || url.indexOf('/config?') >= 0 || url === '/check' || url.indexOf('/check?') >= 0)) {
+        // API 请求匹配：/spider/、/config、/check，以及外部 API（whjzjx.cn）
+        if (url && (url.indexOf('/spider/') >= 0 || url === '/config' || url.indexOf('/config?') >= 0 || url === '/check' || url.indexOf('/check?') >= 0 || url.indexOf('whjzjx.cn') >= 0 || url.indexOf('app.whjzjx') >= 0)) {
             var msgId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
             return new Promise(function(resolve, reject) {
                 window.__PROXY.pending[msgId] = { resolve: resolve, reject: reject };
