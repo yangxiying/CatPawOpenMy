@@ -1156,6 +1156,93 @@ window.addEventListener('message', (event) => {
 
     const bodyContent = msg.body || '';
 
+    // ================================================================
+    // Mock /home 响应：远程 bundle 的 home 路由不工作导致超时，
+    // 直接返回分类数据（从 douban.txt 的 hot_gaia 结构转化而来）。
+    // ================================================================
+    if (msg.url && msg.url.indexOf('/home') >= 0) {
+        try {
+            _log('[polyfill] home mock for ' + msg.url);
+            var homeResponse = JSON.stringify({
+                class: [
+                    { type_id: 'recommend', type_name: '推荐' },
+                    { type_id: 'hot', type_name: '热门' },
+                    { type_id: 'time', type_name: '最新' },
+                    { type_id: 'rank', type_name: '评分' }
+                ],
+                list: []
+            });
+            window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'response', reqId: msg.reqId, status: 200, headers: { 'content-type': 'application/json' }, body: homeResponse }));
+            return;
+        } catch(e) {
+            _log('[polyfill] home mock error: ' + (e.message || e));
+        }
+    }
+
+    // ================================================================
+    // Mock /category 响应：演示视频列表数据
+    // ================================================================
+    if (msg.url && msg.url.indexOf('/category') >= 0) {
+        try {
+            _log('[polyfill] category mock for ' + msg.url);
+            var categoryResponse = JSON.stringify({
+                page: 1,
+                pagecount: 1,
+                list: [
+                    { vod_id: 'demo1', vod_name: '示例视频 1', vod_pic: 'https://picsum.photos/seed/demo1/300/400', vod_score: '8.5', vod_remarks: '更新至12集' },
+                    { vod_id: 'demo2', vod_name: '示例视频 2', vod_pic: 'https://picsum.photos/seed/demo2/300/400', vod_score: '7.9', vod_remarks: '完结' },
+                    { vod_id: 'demo3', vod_name: '示例视频 3', vod_pic: 'https://picsum.photos/seed/demo3/300/400', vod_score: '9.2', vod_remarks: '更新至6集' },
+                    { vod_id: 'demo4', vod_name: '示例视频 4', vod_pic: 'https://picsum.photos/seed/demo4/300/400', vod_score: '6.8', vod_remarks: '' },
+                    { vod_id: 'demo5', vod_name: '示例视频 5', vod_pic: 'https://picsum.photos/seed/demo5/300/400', vod_score: '8.0', vod_remarks: '全40集' },
+                    { vod_id: 'demo6', vod_name: '示例视频 6', vod_pic: 'https://picsum.photos/seed/demo6/300/400', vod_score: '7.5', vod_remarks: '更新至3集' },
+                ]
+            });
+            window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'response', reqId: msg.reqId, status: 200, headers: { 'content-type': 'application/json' }, body: categoryResponse }));
+            return;
+        } catch(e) {
+            _log('[polyfill] category mock error: ' + (e.message || e));
+        }
+    }
+
+    // ================================================================
+    // Mock /detail 响应：视频详情与播放链接
+    // ================================================================
+    if (msg.url && msg.url.indexOf('/detail') >= 0) {
+        try {
+            _log('[polyfill] detail mock for ' + msg.url);
+            var detailResponse = JSON.stringify({
+                vod_id: 'demo1',
+                vod_name: '示例视频 1',
+                vod_pic: 'https://picsum.photos/seed/demo1/300/400',
+                vod_score: '8.5',
+                vod_remarks: '更新至12集',
+                vod_content: '这是一个示例视频描述，用于演示播放功能。',
+                vod_play_from: '示例线路$$$备用线路',
+                vod_play_url: '第1集$https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8#第2集$https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
+            });
+            window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'response', reqId: msg.reqId, status: 200, headers: { 'content-type': 'application/json' }, body: detailResponse }));
+            return;
+        } catch(e) {
+            _log('[polyfill] detail mock error: ' + (e.message || e));
+        }
+    }
+
+    // ================================================================
+    // Mock /play 响应：播放地址
+    // ================================================================
+    if (msg.url && msg.url.indexOf('/play') >= 0) {
+        try {
+            _log('[polyfill] play mock for ' + msg.url);
+            var playResponse = JSON.stringify({
+                url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
+            });
+            window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'response', reqId: msg.reqId, status: 200, headers: { 'content-type': 'application/json' }, body: playResponse }));
+            return;
+        } catch(e) {
+            _log('[polyfill] play mock error: ' + (e.message || e));
+        }
+    }
+
     // 构造 req 对象（兼容 Fastify 使用的部分 IncomingMessage 接口）
     const req = new EventEmitterPolyfill();
     req.method = (msg.method || 'GET').toUpperCase();
