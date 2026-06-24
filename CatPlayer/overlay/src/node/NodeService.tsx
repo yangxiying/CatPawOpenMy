@@ -181,6 +181,8 @@ class NodeServiceImpl {
                         this.useNativeNode = true;
                         this.log(`native Node.js server ready on port ${data.port}`);
                         this.markReady();
+                    } else if (data.type === 'node-log') {
+                        this.log(`[NodeJS:${data.level}] ${data.message}`);
                     }
                 } catch {}
             });

@@ -10,6 +10,44 @@ import { start as startServer } from './index.js';
 import * as config from './index.config.js';
 
 // ============================================================
+// 0. 日志转发 — 捕获 console.log/error/warn 并发送到 RN
+// ============================================================
+(function() {
+    var rn_bridge = null;
+    try { rn_bridge = require('rn-bridge'); } catch(e) {}
+    
+    function sendLog(level, msg) {
+        try {
+            if (rn_bridge) {
+                rn_bridge.channel.send(JSON.stringify({ type: 'node-log', level: level, message: String(msg).slice(0, 500) }));
+            }
+        } catch(e) {}
+    }
+    
+    var _origLog = console.log;
+    var _origError = console.error;
+    var _origWarn = console.warn;
+    
+    console.log = function() {
+        var msg = Array.prototype.map.call(arguments, String).join(' ');
+        sendLog('log', msg);
+        return _origLog.apply(console, arguments);
+    };
+    
+    console.error = function() {
+        var msg = Array.prototype.map.call(arguments, String).join(' ');
+        sendLog('error', msg);
+        return _origError.apply(console, arguments);
+    };
+    
+    console.warn = function() {
+        var msg = Array.prototype.map.call(arguments, String).join(' ');
+        sendLog('warn', msg);
+        return _origWarn.apply(console, arguments);
+    };
+})();
+
+// ============================================================
 // 1. catServerFactory — 创建真实 HTTP 服务器
 // ============================================================
 globalThis.catServerFactory = (handle) => {
