@@ -2,13 +2,14 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { Quality } from '../api/CatApi';
 import { StorageService } from '../storage/StorageService';
+import { createEngine } from './engines';
 
 let Video: any = null;
 try { Video = require('react-native-video').default; } catch (e) { /* not installed */ }
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
 
-export default function VideoPlayer({ uri, headers, title, qualities, qi, onQuality, onBack, vodId, siteKey }: {
+export default function VideoPlayer({ uri, headers, title, qualities, qi, onQuality, onBack, vodId, siteKey, engineKey }: {
     uri: string;
     headers?: any;
     title?: string;
@@ -18,6 +19,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     onBack?: () => void;
     vodId?: string;
     siteKey?: string;
+    engineKey?: string;
 }) {
     const ref = useRef<any>(null);
     const [err, setErr] = useState<string | null>(null);
@@ -29,6 +31,8 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     const [duration, setDuration] = useState(0);
     const [resumePos, setResumePos] = useState<number | null>(null);
     const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const engineRef = useRef<ReturnType<typeof createEngine> | null>(null);
+    const [effectiveEngine, setEffectiveEngine] = useState<string>('builtin');
 
     /** 加载上次播放进度，用于续播 */
     useEffect(() => {
@@ -49,6 +53,39 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
             if (typeof s === 'number' && s >= 0.5 && s <= 3.0) setSpeed(s);
         })();
     }, []);
+
+    /** 加载引擎选择（props 优先，否则从 Storage 读取） */
+    useEffect(() => {
+        (async () => {
+            const key = engineKey || (await StorageService.getSetting('playerType')) || 'builtin';
+            setEffectiveEngine(key);
+            if (key !== 'builtin') {
+                const engine = createEngine(key);
+                engineRef.current = engine;
+                engine.onProgress = (pos: number, dur: number) => {
+                    setPosition(pos);
+                    if (dur > 0) setDuration(dur);
+                };
+                engine.onError = (err: string) => {
+                    setLoading(false);
+                    setErr(err);
+                };
+                engine.onLoad = (dur: number) => {
+                    setLoading(false);
+                    if (dur > 0) setDuration(dur);
+                    if (resumePos && resumePos > 5) {
+                        engine.seek(resumePos);
+                        setResumePos(null);
+                    }
+                };
+                engine.play(uri, headers);
+                return () => {
+                    engine.destroy();
+                    engineRef.current = null;
+                };
+            }
+        })();
+    }, [engineKey, uri, headers]);
 
     /** 续播：视频加载后跳转到上次位置 */
     const handleLoad = useCallback((e: any) => {
@@ -106,7 +143,9 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
         setSpeedKey(k => k + 1);
     }, [speed]);
 
-    if (!Video) {
+    const isBuiltin = effectiveEngine === 'builtin';
+
+    if (!Video && isBuiltin) {
         return (
             <View style={styles.fallback}>
                 <Text style={styles.fbTitle}>react-native-video 未安装</Text>
@@ -123,35 +162,41 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
 
     return (
         <TouchableOpacity activeOpacity={1} style={styles.root} onPress={resetHideTimer}>
-            <Video
-                key={speedKey}
-                ref={ref}
-                source={{ uri, headers: headers || {} }}
-                style={styles.video}
-                controls
-                resizeMode="contain"
-                fullscreenOrientation="landscape"
-                fullscreenAutorotate
-                playInBackground
-                playWhenInactive
-                ignoreSilentSwitch="ignore"
-                rate={speed}
-                onLoadStart={() => { setLoading(true); setErr(null); }}
-                onLoad={handleLoad}
-                onProgress={handleProgress}
-                onError={(e: any) => {
-                    setLoading(false);
-                    setErr(e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e?.error || e));
-                }}
-            />
+            {isBuiltin ? (
+                <Video
+                    key={speedKey}
+                    ref={ref}
+                    source={{ uri, headers: headers || {} }}
+                    style={styles.video}
+                    controls
+                    resizeMode="contain"
+                    fullscreenOrientation="landscape"
+                    fullscreenAutorotate
+                    playInBackground
+                    playWhenInactive
+                    ignoreSilentSwitch="ignore"
+                    rate={speed}
+                    onLoadStart={() => { setLoading(true); setErr(null); }}
+                    onLoad={handleLoad}
+                    onProgress={handleProgress}
+                    onError={(e: any) => {
+                        setLoading(false);
+                        setErr(e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e?.error || e));
+                    }}
+                />
+            ) : (
+                <View style={styles.video} />
+            )}
 
             {showControls && (
                 <View style={styles.topbar}>
                     <TouchableOpacity onPress={handleBack} hitSlop={hit}><Text style={styles.tb}>‹ 返回</Text></TouchableOpacity>
                     <Text style={styles.title} numberOfLines={1}>{title}</Text>
-                    <TouchableOpacity onPress={() => ref.current?.presentFullscreenPlayer()} hitSlop={hit}>
-                        <Text style={styles.tb}>全屏</Text>
-                    </TouchableOpacity>
+                    {isBuiltin && (
+                        <TouchableOpacity onPress={() => ref.current?.presentFullscreenPlayer()} hitSlop={hit}>
+                            <Text style={styles.tb}>全屏</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             )}
 
