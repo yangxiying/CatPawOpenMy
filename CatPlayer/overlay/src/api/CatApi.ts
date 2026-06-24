@@ -30,11 +30,47 @@ export type CatConfig = {
 
 export const CatApi = {
     getConfig: (): Promise<CatConfig> => get('/config'),
-    home: (api: string) => post(api, 'home'),
-    category: (api: string, id: any, page: number, filters?: any) =>
-        post(api, 'category', { id, page, filters: filters || {} }),
-    detail: (api: string, id: any) => post(api, 'detail', { id }),
-    play: (api: string, flag: string, id: string) => post(api, 'play', { flag, id }),
+    home: (api: string) => {
+        // Mock /home 响应：返回分类数据（远程 bundle 的 home 路由不可用）
+        NodeService?.log?.('[CatApi] home MOCK for ' + api);
+        return Promise.resolve({
+            class: [
+                { type_id: 'recommend', type_name: '推荐' },
+                { type_id: 'hot', type_name: '热门' },
+                { type_id: 'time', type_name: '最新' },
+                { type_id: 'rank', type_name: '评分' }
+            ],
+            list: []
+        });
+    },
+    category: (api: string, id: any, page: number, filters?: any) => {
+        NodeService?.log?.('[CatApi] category MOCK for ' + api + ' id=' + id);
+        return Promise.resolve({
+            page: 1,
+            pagecount: 1,
+            list: [
+                { vod_id: 'demo1', vod_name: '测试视频 1', vod_pic: 'https://picsum.photos/seed/demo1/300/400', vod_score: '8.5', vod_remarks: '更新至12集' },
+                { vod_id: 'demo2', vod_name: '测试视频 2', vod_pic: 'https://picsum.photos/seed/demo2/300/400', vod_score: '7.9', vod_remarks: '完结' },
+                { vod_id: 'demo3', vod_name: '测试视频 3', vod_pic: 'https://picsum.photos/seed/demo3/300/400', vod_score: '9.2', vod_remarks: '更新至6集' },
+            ]
+        });
+    },
+    detail: (api: string, id: any) => {
+        NodeService?.log?.('[CatApi] detail MOCK for ' + api + ' id=' + id);
+        return Promise.resolve({
+            vod_id: id || 'demo1',
+            vod_name: '测试视频',
+            vod_pic: 'https://picsum.photos/seed/demo1/300/400',
+            vod_score: '8.5',
+            vod_content: '这是一个演示视频。',
+            vod_play_from: '默认线路',
+            vod_play_url: '第1集$https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
+        });
+    },
+    play: (api: string, flag: string, id: string) => {
+        NodeService?.log?.('[CatApi] play MOCK id=' + id);
+        return Promise.resolve({ url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' });
+    },
     search: (api: string, wd: string, page = 1) => post(api, 'search', { wd, page }),
     init: (api: string) => post(api, 'init'),
     /** 每站点每会话仅 init 一次（部分 spider 需先初始化设备/网盘状态）。 */
