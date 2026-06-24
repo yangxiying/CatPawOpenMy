@@ -273,7 +273,22 @@ function createServerPolyfill(requestHandler) {
             const rawPort = typeof opts === 'number' ? opts : (opts?.port || 0);
             const numericPort = typeof rawPort === 'number' ? rawPort : parseInt(rawPort, 10) || 0;
             server._port = numericPort || 18080; // 0 → 默认 18080（WebView 端不真正监听）
-            HTTP_SERVERS[server._port] = requestHandler;
+            HTTP_SERVERS[server._port] = function(req, res) {
+                // 拦截 /home 请求：远程 bundle 的 home 路由不存在导致超时
+                if (req.url && req.url.indexOf('/home') >= 0) {
+                    try {
+                        _log('[polyfill] wrap /home intercept for ' + req.url);
+                        var homeData = JSON.stringify({
+                            class: [{type_id:'recommend',type_name:'推荐'},{type_id:'hot',type_name:'热门'},{type_id:'time',type_name:'最新'},{type_id:'rank',type_name:'评分'}],
+                            list: []
+                        });
+                        res.writeHead(200, {'content-type':'application/json'});
+                        res.end(homeData);
+                        return;
+                    } catch(e) { _log('[polyfill] wrap /home error: ' + (e.message||e)); }
+                }
+                requestHandler(req, res);
+            };
             if (cb) cb();
             _log('listen port=' + server._port);
             // 通知 RN 端口就绪
