@@ -156,9 +156,38 @@ class NodeServiceImpl {
     private playCbs: Cb<{ url: string; title?: string }>[] = [];
     private sourceTypeCbs: Cb<boolean>[] = [];
     remoteSourceUrl: string = '';
+    // 原生 Node.js 运行时（nodejs-mobile-react-native）
+    private nodejs: any = null;
+    private useNativeNode = false;
+    private nativeNodePort = 0;
 
     constructor() {
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
+        this.tryNativeNode();
+    }
+
+    /** 尝试初始化原生 Node.js 运行时 */
+    private async tryNativeNode() {
+        try {
+            const NodeJS = require('nodejs-mobile-react-native').default;
+            this.nodejs = NodeJS;
+            NodeJS.start('main.js');
+            this.log('native Node.js runtime started');
+            NodeJS.channel.on('message', (msg: string) => {
+                try {
+                    const data = JSON.parse(msg);
+                    if (data.type === 'server-ready') {
+                        this.nativeNodePort = data.port;
+                        this.useNativeNode = true;
+                        this.log(`native Node.js server ready on port ${data.port}`);
+                        this.markReady();
+                    }
+                } catch {}
+            });
+        } catch (e: any) {
+            this.log(`native Node.js unavailable: ${e?.message || e}, using WebView`);
+            this.useNativeNode = false;
+        }
     }
 
     get isWebsiteSource() { return this._isWebsiteSource; }
@@ -450,8 +479,35 @@ class NodeServiceImpl {
     setWebViewRef(ref: WebViewNodeRef | null) { this.wvRef = ref; }
 
     async request(req: BridgeRequest): Promise<BridgeResponse> {
+        // 优先使用原生 Node.js 运行时
+        if (this.useNativeNode && this.nodejs) {
+            try {
+                return await this.nativeNodeRequest(req);
+            } catch (e: any) {
+                this.log(`native node request failed: ${e?.message || e}, falling back`);
+            }
+        }
         if (!this.wvRef) throw new Error('WebView not ready');
         return this.wvRef.request(req);
+    }
+
+    private async nativeNodeRequest(req: BridgeRequest): Promise<BridgeResponse> {
+        return new Promise((resolve, reject) => {
+            const id = Date.now();
+            const timer = setTimeout(() => reject(new Error('native node request timeout')), 30000);
+            const handler = (response: string) => {
+                try {
+                    const msg = JSON.parse(response);
+                    if (msg.type === 'api-response' && msg.id === id) {
+                        clearTimeout(timer);
+                        this.nodejs.channel.removeListener('message', handler);
+                        resolve({ status: msg.status || 200, headers: msg.headers || {}, body: msg.body || '' });
+                    }
+                } catch {}
+            };
+            this.nodejs.channel.on('message', handler);
+            this.nodejs.channel.send(JSON.stringify({ type: 'api-request', id, method: req.method, url: req.url, headers: req.headers || {}, body: req.body || null }));
+        });
     }
 
     getBaseUrl(): Promise<string> { return Promise.resolve('bridge://local'); }
