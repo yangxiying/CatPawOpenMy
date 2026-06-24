@@ -13,6 +13,7 @@ export default function Boot() {
     const [parsing, setParsing] = useState(false);
     const [parsed, setParsed] = useState(false);
     const configRef = useRef<CatConfig|null>(null);
+    const autoNavDone = useRef(false);
 
     const parseSites = async () => {
         setErr(null);
@@ -59,9 +60,22 @@ export default function Boot() {
             clearTimeout(timeout);
             setLogs(l => [...l, '服务已就绪，请点击「解析」或「进入」']);
             setReady(true);
+            // 自动解析
+            setTimeout(() => parseSites(), 500);
         }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
         return () => { offLog(); offErr(); clearTimeout(timeout); };
     }, []);
+
+    // 解析完成后自动导航到站点页面
+    useEffect(() => {
+        if (parsed && configRef.current && !autoNavDone.current) {
+            autoNavDone.current = true;
+            setLogs(l => [...l, '自动进入站点页面...']);
+            setTimeout(() => {
+                nav.replace('Sites', { config: configRef.current });
+            }, 1000);
+        }
+    }, [parsed, nav]);
 
     return (
         <View style={styles.c}>
