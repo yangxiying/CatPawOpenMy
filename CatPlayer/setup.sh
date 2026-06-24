@@ -40,7 +40,7 @@ mkdir -p nodejs-assets 2>/dev/null || true  # 保留目录兼容性
 echo "▶ installing JS deps …"
 npm install
 if [ "$MINIMAL" = "false" ]; then
-    npm install --save react-native-webview react-native-fs react-native-video@5.2.2
+    npm install --save react-native-webview react-native-fs react-native-video@5.2.2 nodejs-mobile-react-native@18.20.4
 fi
 
 echo "▶ inlining polyfill source (avoids Hermes Function.prototype.toString() bug) …"
@@ -70,10 +70,19 @@ else
 fi
 cp "$HERE/overlay/metro.config.js" "$APP_DIR/metro.config.js"
 
-echo "▶ applying overlay (nodejs-project) — skipped (WebView approach)"
-# nodejs-project no longer needed: source bundle runs inside WebView with polyfills
+echo "▶ applying overlay (nodejs-project) — restored (native Node.js runtime)"
+# Embed Node.js runtime for production builds
 if [ "$MINIMAL" = "false" ]; then
-    : # no-op
+    mkdir -p "$APP_DIR/nodejs-assets/nodejs-project" 2>/dev/null || true
+    # 复制预构建的 Node.js 运行时入口
+    if [ -f "$SPIDER_DIR/dist/nodejs-runtime.js" ]; then
+        cp "$SPIDER_DIR/dist/nodejs-runtime.js" "$APP_DIR/nodejs-assets/nodejs-project/main.js"
+        echo "  nodejs-runtime.js copied to nodejs-assets/"
+    fi
+    if [ -f "$SPIDER_DIR/dist/index.config.js" ]; then
+        cp "$SPIDER_DIR/dist/index.config.js" "$APP_DIR/nodejs-assets/nodejs-project/index.config.js"
+        echo "  index.config.js copied to nodejs-assets/"
+    fi
 fi
 
 echo "▶ patching native config …"
