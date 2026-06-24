@@ -169,7 +169,8 @@ class NodeServiceImpl {
     /** 尝试初始化原生 Node.js 运行时 */
     private async tryNativeNode() {
         try {
-            const NodeJS = require('nodejs-mobile-react-native').default;
+            console.log("[NodeJS] trying module...");
+            const NodeJS = require("nodejs-mobile-react-native").default;
             this.nodejs = NodeJS;
             NodeJS.start('main.js');
             this.log('native Node.js runtime started');

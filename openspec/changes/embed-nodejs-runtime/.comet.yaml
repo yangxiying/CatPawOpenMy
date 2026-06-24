@@ -1,0 +1,9 @@
+name: embed-nodejs-runtime
+phase: build
+workflow: full
+auto_transition: true
+opened_at: "2026-06-24T03:00:00Z"
+artifacts:
+  proposal: proposal.md
+  design: design.md
+  tasks: tasks.md
