@@ -1143,7 +1143,7 @@ window.addEventListener('message', (event) => {
     if (!msg || msg.type !== 'request') return;
 
     // TRACE: 记录所有请求 URL（帮助排查路由问题）
-    try { console.log('[TRACE] request type=' + msg.type + ' url=' + (msg.url||'') + ' method=' + (msg.method||'')); } catch(e) {}
+    try { _log('[TRACE] request type=' + msg.type + ' url=' + (msg.url||'') + ' method=' + (msg.method||'')); } catch(e) {}
 
     const port = msg.port || 18080;
     const handler = HTTP_SERVERS[port];
