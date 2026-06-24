@@ -363,6 +363,24 @@ class NodeServiceImpl {
                     this.log(`website source URL: ${this.remoteSourceUrl}`);
                 }
 
+                // 如果有原生 Node.js 运行时，通过 loadScript 加载远程 bundle
+                if (this.useNativeNode && this.nodejs) {
+                    try {
+                        const remoteDir = dir + '/remote';
+                        await RNFS.mkdir(remoteDir).catch(() => {});
+                        // 复制 index.js 和 index.config.js 到 native 可访问路径
+                        await RNFS.cp(idxPath, remoteDir + '/index.js').catch(() => {});
+                        await RNFS.cp(cfgPath, remoteDir + '/index.config.js').catch(() => {});
+                        this.nodejs.channel.send(JSON.stringify({
+                            type: 'load-remote-bundle',
+                            path: remoteDir,
+                        }));
+                        this.log('remote bundle sent to native Node.js runtime');
+                    } catch (e2: any) {
+                        this.log(`native Node.js load failed: ${e2?.message || e2}, using WebView`);
+                    }
+                }
+
                 this.renderTrigger?.();
                 return;
             } catch (e: any) {
