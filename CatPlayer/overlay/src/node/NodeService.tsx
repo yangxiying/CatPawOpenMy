@@ -170,26 +170,39 @@ class NodeServiceImpl {
     private async tryNativeNode() {
         try {
             console.log("[NodeJS] trying module...");
-            const NodeJS = require("nodejs-mobile-react-native").default;
+            const NodeJS = require("nodejs-mobile-react-native");
+            console.log("[NodeJS] require result:", typeof NodeJS, NodeJS ? Object.keys(NodeJS).join(',') : 'null');
             this.nodejs = NodeJS;
+            console.log("[NodeJS] module loaded OK, starting main.js...", typeof NodeJS?.start);
             NodeJS.start('main.js');
-            this.log('native Node.js runtime started');
+            console.log("[NodeJS] main.js started, channel listener setup...");
             NodeJS.channel.on('message', (msg: string) => {
                 try {
                     const data = JSON.parse(msg);
                     if (data.type === 'server-ready') {
                         this.nativeNodePort = data.port;
                         this.useNativeNode = true;
-                        this.log(`native Node.js server ready on port ${data.port}`);
-                        this.markReady();
+                        console.log(`[NodeJS] server-ready on port ${data.port}`);
+                        if (!this.ready) this.markReady();
+                    } else if (data.type === 'node-started') {
+                        console.log(`[NodeJS] heartbeat: ${data.message}`);
                     } else if (data.type === 'node-log') {
-                        this.log(`[NodeJS:${data.level}] ${data.message}`);
+                        console.log(`[NodeJS:${data.level}] ${data.message}`);
+                    } else if (data.type === 'sniff') {
+                        this.handleSniff(data).then(result => {
+                            NodeJS.channel.send(JSON.stringify({
+                                correlationId: data.correlationId,
+                                result,
+                            }));
+                        });
                     }
                 } catch {}
             });
+            console.log("[NodeJS] initialization complete");
         } catch (e: any) {
-            this.log(`native Node.js unavailable: ${e?.message || e}, using WebView`);
+            console.log(`[NodeJS] FAILED: ${e?.message || e}`);
             this.useNativeNode = false;
+            this.nodejs = null;
         }
     }
 
@@ -294,6 +307,21 @@ class NodeServiceImpl {
         this.started = true;
         this.log(`init start (polyfillCode len=${polyfillCode.length})`);
 
+        // 等待原生 Node.js 运行时就绪（1.2MB bundle on sim 需更长）
+        if (this.nodejs && !this.useNativeNode) {
+            this.log('等待原生 Node.js 运行时...');
+            for (let i = 0; i < 150; i++) {
+                if (this.useNativeNode) break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            if (this.useNativeNode) {
+                this.log(`原生 Node.js 就绪 (port ${this.nativeNodePort})，跳过 WebView`);
+                this.markReady();
+                return;
+            }
+            this.log('原生 Node.js 超时未就绪，回退 WebView');
+        }
+
         // 检查是否有自定义远程源 URL（从 sources 数组读取）
         let remoteUrl = '';
         try {
@@ -367,18 +395,20 @@ class NodeServiceImpl {
                 }
 
                 // 如果有原生 Node.js 运行时，通过 loadScript 加载远程 bundle
-                if (this.useNativeNode && this.nodejs) {
+                if (this.nodejs) {
                     try {
                         const remoteDir = dir + '/remote';
                         await RNFS.mkdir(remoteDir).catch(() => {});
                         // 复制 index.js 和 index.config.js 到 native 可访问路径
-                        await RNFS.cp(idxPath, remoteDir + '/index.js').catch(() => {});
-                        await RNFS.cp(cfgPath, remoteDir + '/index.config.js').catch(() => {});
+                        try { await RNFS.cp(idxPath, remoteDir + '/index.js'); } catch {}
+                        try { await RNFS.cp(cfgPath, remoteDir + '/index.config.js'); } catch {}
                         this.nodejs.channel.send(JSON.stringify({
                             type: 'load-remote-bundle',
                             path: remoteDir,
                         }));
                         this.log('remote bundle sent to native Node.js runtime');
+                        // 使用原生运行时后，不再渲染 WebView
+                        return;
                     } catch (e2: any) {
                         this.log(`native Node.js load failed: ${e2?.message || e2}, using WebView`);
                     }
@@ -499,9 +529,11 @@ class NodeServiceImpl {
 
     setWebViewRef(ref: WebViewNodeRef | null) { this.wvRef = ref; }
 
+    isNativeNodeReady(): boolean { return this.useNativeNode; }
+
     async request(req: BridgeRequest): Promise<BridgeResponse> {
-        // 优先使用原生 Node.js 运行时
-        if (this.useNativeNode && this.nodejs) {
+        // 优先使用原生 Node.js 运行时（直连 HTTP）
+        if (this.useNativeNode && this.nativeNodePort > 0) {
             try {
                 return await this.nativeNodeRequest(req);
             } catch (e: any) {
@@ -513,22 +545,29 @@ class NodeServiceImpl {
     }
 
     private async nativeNodeRequest(req: BridgeRequest): Promise<BridgeResponse> {
-        return new Promise((resolve, reject) => {
-            const id = Date.now();
-            const timer = setTimeout(() => reject(new Error('native node request timeout')), 30000);
-            const handler = (response: string) => {
-                try {
-                    const msg = JSON.parse(response);
-                    if (msg.type === 'api-response' && msg.id === id) {
-                        clearTimeout(timer);
-                        this.nodejs.channel.removeListener('message', handler);
-                        resolve({ status: msg.status || 200, headers: msg.headers || {}, body: msg.body || '' });
-                    }
-                } catch {}
-            };
-            this.nodejs.channel.on('message', handler);
-            this.nodejs.channel.send(JSON.stringify({ type: 'api-request', id, method: req.method, url: req.url, headers: req.headers || {}, body: req.body || null }));
+        const url = `http://127.0.0.1:${this.nativeNodePort}${req.url}`;
+        const headers: Record<string, string> = { ...(req.headers || {}) };
+        if (!headers['content-type']) headers['content-type'] = 'application/json';
+        const res = await fetch(url, {
+            method: req.method || 'GET',
+            headers,
+            body: req.body || undefined,
         });
+        const body = await res.text();
+        const respHeaders: Record<string, string> = {};
+        res.headers?.forEach?.((v: string, k: string) => { respHeaders[k] = v; });
+        return { status: res.status, headers: respHeaders, body };
+    }
+
+    private async handleSniff(data: any): Promise<any> {
+        try {
+            const { SniffModule } = require('react-native').NativeModules;
+            if (!SniffModule) return null;
+            const result = await SniffModule.sniff(data.url, data.rule, data.timeout || 10000);
+            return result;
+        } catch {
+            return null;
+        }
     }
 
     getBaseUrl(): Promise<string> { return Promise.resolve('bridge://local'); }
@@ -579,7 +618,7 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
     }, []);
 
     const code = nodeService.getBundleCode();
-    if (!code) { return null; }
+    if (!code || nodeService.isNativeNodeReady()) { return null; }
 
     return (
         <WebViewNode

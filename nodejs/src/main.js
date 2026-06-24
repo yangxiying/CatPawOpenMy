@@ -10,12 +10,19 @@ import { start as startServer } from './index.js';
 import * as config from './index.config.js';
 
 // ============================================================
-// 0. 日志转发 — 捕获 console.log/error/warn 并发送到 RN
+// 0. 日志转发 + 启动心跳
 // ============================================================
 (function() {
     var rn_bridge = null;
     try { rn_bridge = require('rn-bridge'); } catch(e) {}
-    
+
+    // 立即发送心跳，确认 rn-bridge 通道正常工作
+    if (rn_bridge) {
+        try {
+            rn_bridge.channel.send(JSON.stringify({ type: 'node-started', message: 'runtime init' }));
+        } catch(e) {}
+    }
+
     function sendLog(level, msg) {
         try {
             if (rn_bridge) {
@@ -50,6 +57,8 @@ import * as config from './index.config.js';
 // ============================================================
 // 1. catServerFactory — 创建真实 HTTP 服务器
 // ============================================================
+let _fastifyPort = 0;
+
 globalThis.catServerFactory = (handle) => {
     let port = 0;
     const server = createServer((req, res) => {
@@ -113,7 +122,19 @@ try {
         try {
             const data = JSON.parse(msg);
             console.log('[NodeJS] msg from RN:', data.type || 'unknown');
-            
+
+            // 有 correlationId → 来自 RN 的异步响应（如 sniff 结果），路由给 pending request
+            if (data.correlationId) {
+                const pending = pendingRequests[data.correlationId];
+                if (pending) {
+                    delete pendingRequests[data.correlationId];
+                    pending.resolve(data.result || data);
+                } else {
+                    console.log('[NodeJS] orphan correlationId:', data.correlationId);
+                }
+                return;
+            }
+
             switch (data.type) {
                 case 'native-server-port':
                     _dartPort = data.port;
@@ -145,7 +166,24 @@ try {
 }
 
 // ============================================================
-// 5. API 请求处理（通过 rn-bridge 接收 RN 请求）
+// 5. correlationId pending requests（嗅探等异步响应路由）
+// ============================================================
+const pendingRequests = {};
+
+function registerPendingRequest(correlationId, timeout) {
+  return new Promise((resolve, reject) => {
+    pendingRequests[correlationId] = { resolve, reject };
+    setTimeout(() => {
+      if (pendingRequests[correlationId]) {
+        delete pendingRequests[correlationId];
+        reject(new Error('correlationId timeout'));
+      }
+    }, timeout || 15000);
+  });
+}
+
+// ============================================================
+// 6. API 请求处理（通过 rn-bridge 接收 RN 请求）
 // ============================================================
 const http = require('http');
 
