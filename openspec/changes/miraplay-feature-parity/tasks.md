@@ -16,12 +16,12 @@
 
 ## 3. 多引擎播放器 UI
 
-- [ ] 3.1 `player/VideoPlayer.tsx`: 抽象 facade + 引擎选择逻辑
-- [ ] 3.2 设置页 `Settings.tsx`: 引擎切换（mpv/MDK/内置）+ 默认倍速设置
-- [ ] 3.3 清晰度选择 UI：质量 chip 指示器（当前/可选）
-- [ ] 3.4 倍速面板完善
-- [ ] 3.5 续播逻辑完善（vodId → StorageService → seek）
-- [ ] 3.6 引擎降级逻辑：引擎初始化失败 → 回退 react-native-video
+- [x] 3.1 `player/VideoPlayer.tsx`: 抽象 facade + 引擎选择逻辑
+- [x] 3.2 设置页 `Settings.tsx`: 引擎切换（mpv/MDK/内置）+ 默认倍速设置
+- [x] 3.3 清晰度选择 UI：质量 chip 指示器（当前/可选）
+- [x] 3.4 倍速面板完善
+- [x] 3.5 续播逻辑完善（vodId → StorageService → seek）
+- [x] 3.6 引擎降级逻辑：引擎初始化失败 → 回退 react-native-video
 
 ## 4. HLS 代理
 
