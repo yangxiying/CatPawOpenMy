@@ -58,8 +58,8 @@
 
 ## 8. 收尾与兼容
 
-- [ ] 8.1 现有 spider 适配新 play 链（sniffer + hls proxy + decoder）
-- [ ] 8.2 历史播放记录兼容多引擎
+- [x] 8.1 现有 spider 适配新 play 链（sniffer + hls proxy + decoder）
+- [x] 8.2 历史播放记录兼容多引擎
 - [ ] 8.3 清理旧的 WebView polyfill 降级路径中冲突代码
-- [ ] 8.4 文档更新（CLAUDE.md + README）
+- [x] 8.4 文档更新（CLAUDE.md + README）
 - [ ] 8.5 端到端验证：完整浏览 → 播放 → 投屏流程

@@ -89,6 +89,14 @@ Some bundles are **hybrid** (contain both `websiteBundle` and `catServerFactory`
 - **esbuild** (active): bundles to CJS, target node18, minifies index but NOT config (config must stay readable)
 - **rollup** (obsolete): scripts kept for reference (`build:rollup*` in package.json)
 
+### CatPlayer MPV/FFmpeg 可选依赖
+
+mpv + FFmpeg iOS framework 为可选，提供 HLS/MP4/ts/加密流格式支持。
+编译方法：
+  1. cd CatPlayer && bash scripts/build-mpv-ios.sh
+  2. 产物放在 CatPlayer/app/Frameworks/
+未编译时降级使用 react-native-video（内置播放器）。
+
 GH Actions CI (`build-nodejs.yml`): manual trigger → `npm i && npm run build` → uploads `dist/` artifact.
 
 ## Constraints

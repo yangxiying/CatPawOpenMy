@@ -81,6 +81,12 @@ NodeService/WebViewNode 根据 bundle 内容判断源类型：
 | `overlay/src/ui/App.tsx` | 根组件，挂载 NodeWebView + 极简栈导航 |
 | `overlay/src/ui/screens/Boot.tsx` | 启动页：初始化 WebView → 等待端口 → 获取 /config |
 | `overlay/src/player/VideoPlayer.tsx` | 视频播放（react-native-video），全屏横屏 + 后台音频 |
+| `overlay/src/player/engine.ts` | PlayerEngine 接口定义（抽象播放控制：play/pause/seek/load） |
+| `overlay/src/player/engines.ts` | 引擎注册表，管理 mpv / react-native-video 多引擎切换 |
+| `overlay/src/player/DLNACasting.ts` | DLNA/UPnP 投屏 UI 封装（设备发现 + 投屏控制） |
+| `PlayerBridge/MPVPlayer.h/m` | mpv NativeModule（RCTBridgeModule），管理 mpv 播放器实例 |
+| `PlayerBridge/SniffModule.h/m` | WKWebView URL 嗅探（拦截 video 标签 HLS 直链） |
+| `PlayerBridge/DLNACasting.h/m` | DLNA/UPnP 投屏 NativeModule（SSDP 发现 + 投屏控制） |
 | `overlay/ios/AppIcon.appiconset/` | 小猫简笔画图标（PIL 生成，13 个尺寸） |
 | `patch.js` | iOS 原生补丁（Info.plist UIBackgroundModes=audio、AppDelegate AVAudioSession、Podfile 13.4） |
 | `setup.sh` | 一键生成工程：RN init → npm install → overlay → patch → pod install |
@@ -110,6 +116,14 @@ NodeService/WebViewNode 根据 bundle 内容判断源类型：
 - polyfill `fs` 为 stub（readFileSync/writeFileSync 不可用），仅 mkdirSync/existsSync
 - `printWidth: 10000`（Prettier，禁用行宽换行）
 - 每次构建生成 `.md5` 哈希文件（源完整性校验）
+
+## MPV/FFmpeg 可选依赖
+
+mpv + FFmpeg iOS framework 为可选，提供 HLS/MP4/ts/加密流格式支持。
+编译方法：
+  1. cd CatPlayer && bash scripts/build-mpv-ios.sh
+  2. 产物放在 CatPlayer/app/Frameworks/
+未编译时降级使用 react-native-video（内置播放器）。
 
 ## Verification
 
