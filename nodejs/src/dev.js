@@ -16,7 +16,7 @@ globalThis.catServerFactory = (handle) => {
 };
 
 globalThis.catDartServerPort = () => {
-    return 0;
+    return parseInt(process.env['DART_SERVER_PORT'] || '0', 10);
 };
 
 import { start } from './index.js';
@@ -24,3 +24,7 @@ import { start } from './index.js';
 import * as config from './index.config.js';
 
 start(config.default);
+
+console.log('[dev] Node.js server started');
+console.log('[dev] DEV_HTTP_PORT=' + (process.env['DEV_HTTP_PORT'] || 'auto'));
+console.log('[dev] Remote bundles can be loaded via POST /admin/load-remote');
