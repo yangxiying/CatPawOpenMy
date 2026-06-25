@@ -12,7 +12,7 @@ on:
           - full
           - minimal
   push:
-    branches: [main, feat/catplayer-ios]
+    branches: [main, feat/catplayer-ios, feature/20260624/miraplay-feature-parity]
     paths:
       - 'CatPlayer/**'
       - '.github/workflows/build-ios.yml'
@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Verify Node version
         run: node -v && npm -v
@@ -59,10 +59,9 @@ jobs:
           ls -la app/ || echo "app/ still missing after setup.sh!"
           cat app/package.json 2>/dev/null || echo "package.json still missing!"
 
-      # nodejs-mobile build phase requires Node 18; switch now that npm/metro work is done
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Pod install
         working-directory: CatPlayer
