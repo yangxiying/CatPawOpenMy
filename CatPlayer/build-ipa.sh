@@ -12,6 +12,23 @@ cd "$IOS"
 # 只清 DerivedData 与上次的 ipa 产物；保留 build/generated/ios（codegen 输出）
 rm -rf "$DD" "$IOS/build/Payload" "$IOS/build/CatPlayer.ipa"
 
+# ── 修补 pbxproj：把 [NODEJS MOBILE] Build Native Modules 脚本替换为 exit 0 ──
+PBX="$IOS/CatPlayer.xcodeproj/project.pbxproj"
+if [ -f "$PBX" ]; then
+  node -e '
+const fs = require("fs");
+let c = fs.readFileSync("'"$PBX"'", "utf8");
+const re = /(\[NODEJS MOBILE\] Build Native Modules[\s\S]*?shellScript = )"(?:[^"\\]|\\.)*"/;
+if (re.test(c)) {
+  c = c.replace(re, "$1\"exit 0\"");
+  fs.writeFileSync("'"$PBX"'", c);
+  console.log("patched Build Native Modules shellScript -> exit 0");
+} else {
+  console.log("Build Native Modules phase not found");
+}
+'
+fi
+
 echo "▶ xcodebuild (Release, iphoneos, unsigned) …"
 export NODEJS_MOBILE_BUILD_NATIVE_MODULES=0
 xcodebuild \
