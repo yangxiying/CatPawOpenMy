@@ -92,7 +92,7 @@ const write = (p, c) => { fs.writeFileSync(p, c); console.log('  patched', path.
                 '  # FRAMEWORK_SEARCH_PATHS for NodeMobile.framework',
                 '  installer.pods_project.targets.each do |target|',
                 '    target.build_configurations.each do |config|',
-                "      config.build_settings['FRAMEWORK_SEARCH_PATHS'] = ['$(inherited)', $nodeMobileSearchPath]",
+                "      config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)', $nodeMobileSearchPath]",
                 '    end',
                 '  end',
                 '  # FRAMEWORK_SEARCH_PATHS for main app target',
