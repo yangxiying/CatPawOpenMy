@@ -3,9 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking } 
 import { Quality } from '../api/CatApi';
 import { StorageService } from '../storage/StorageService';
 import { createEngine } from './engines';
+import { BuiltinEngine } from './engines/BuiltinEngine';
 
-let Video: any = null;
-try { Video = require('react-native-video').default; } catch (e) { /* not installed */ }
+let hasBuiltinVideo = false;
+try { require('react-native-video'); hasBuiltinVideo = true; } catch {}
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
 
@@ -21,7 +22,6 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     siteKey?: string;
     engineKey?: string;
 }) {
-    const ref = useRef<any>(null);
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [speed, setSpeed] = useState(1.0);
@@ -31,7 +31,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     const [duration, setDuration] = useState(0);
     const [resumePos, setResumePos] = useState<number | null>(null);
     const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const engineRef = useRef<ReturnType<typeof createEngine> | null>(null);
+    const engineRef = useRef<BuiltinEngine | ReturnType<typeof createEngine> | null>(null);
     const [effectiveEngine, setEffectiveEngine] = useState<string>('builtin');
 
     /** 加载上次播放进度，用于续播 */
@@ -59,31 +59,34 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
         (async () => {
             const key = engineKey || (await StorageService.getSetting('playerType')) || 'builtin';
             setEffectiveEngine(key);
+            const engine = createEngine(key);
+            engineRef.current = engine;
+
+            engine.onProgress = (pos: number, dur: number) => {
+                setPosition(pos);
+                if (dur > 0) setDuration(dur);
+            };
+            engine.onError = (err: string) => {
+                setLoading(false);
+                setErr(err);
+            };
+            engine.onLoad = (dur: number) => {
+                setLoading(false);
+                if (dur > 0) setDuration(dur);
+                if (resumePos && resumePos > 5) {
+                    engine.seek(resumePos);
+                    setResumePos(null);
+                }
+            };
+
             if (key !== 'builtin') {
-                const engine = createEngine(key);
-                engineRef.current = engine;
-                engine.onProgress = (pos: number, dur: number) => {
-                    setPosition(pos);
-                    if (dur > 0) setDuration(dur);
-                };
-                engine.onError = (err: string) => {
-                    setLoading(false);
-                    setErr(err);
-                };
-                engine.onLoad = (dur: number) => {
-                    setLoading(false);
-                    if (dur > 0) setDuration(dur);
-                    if (resumePos && resumePos > 5) {
-                        engine.seek(resumePos);
-                        setResumePos(null);
-                    }
-                };
                 engine.play(uri, headers);
-                return () => {
-                    engine.destroy();
-                    engineRef.current = null;
-                };
             }
+
+            return () => {
+                engine.destroy();
+                engineRef.current = null;
+            };
         })();
     }, [engineKey, uri, headers]);
 
@@ -92,11 +95,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
         setLoading(false);
         const dur = e?.duration || e?.naturalSize?.duration || 0;
         if (dur > 0) setDuration(dur);
-        if (resumePos && resumePos > 5 && ref.current) {
-            ref.current.seek(resumePos);
-            setResumePos(null);
-        }
-    }, [resumePos]);
+    }, []);
 
     /** 定时保存播放进度到历史 */
     const handleProgress = useCallback((e: any) => {
@@ -133,19 +132,16 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
         hideTimer.current = setTimeout(() => setShowControls(false), 5000);
     }, []);
 
-    const [speedKey, setSpeedKey] = useState(0);
-
     /** 切换倍速 */
     const cycleSpeed = useCallback(() => {
         const idx = SPEED_OPTIONS.indexOf(speed);
         const next = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
         setSpeed(next);
-        setSpeedKey(k => k + 1);
     }, [speed]);
 
     const isBuiltin = effectiveEngine === 'builtin';
 
-    if (!Video && isBuiltin) {
+    if (!hasBuiltinVideo && isBuiltin) {
         return (
             <View style={styles.fallback}>
                 <Text style={styles.fbTitle}>react-native-video 未安装</Text>
@@ -162,28 +158,20 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
 
     return (
         <TouchableOpacity activeOpacity={1} style={styles.root} onPress={resetHideTimer}>
-            {isBuiltin ? (
-                <Video
-                    key={speedKey}
-                    ref={ref}
-                    source={{ uri, headers: headers || {} }}
-                    style={styles.video}
-                    controls
-                    resizeMode="contain"
-                    fullscreenOrientation="landscape"
-                    fullscreenAutorotate
-                    playInBackground
-                    playWhenInactive
-                    ignoreSilentSwitch="ignore"
-                    rate={speed}
-                    onLoadStart={() => { setLoading(true); setErr(null); }}
-                    onLoad={handleLoad}
-                    onProgress={handleProgress}
-                    onError={(e: any) => {
+            {isBuiltin && engineRef.current instanceof BuiltinEngine ? (
+                engineRef.current.renderVideo({
+                    uri,
+                    headers,
+                    rate: speed,
+                    onLoadStart: () => { setLoading(true); setErr(null); },
+                    onLoad: handleLoad,
+                    onProgress: handleProgress,
+                    onError: (e: any) => {
                         setLoading(false);
                         setErr(e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e?.error || e));
-                    }}
-                />
+                    },
+                    resumePos: resumePos ?? undefined,
+                })
             ) : (
                 <View style={styles.video} />
             )}
@@ -193,7 +181,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
                     <TouchableOpacity onPress={handleBack} hitSlop={hit}><Text style={styles.tb}>‹ 返回</Text></TouchableOpacity>
                     <Text style={styles.title} numberOfLines={1}>{title}</Text>
                     {isBuiltin && (
-                        <TouchableOpacity onPress={() => ref.current?.presentFullscreenPlayer()} hitSlop={hit}>
+                        <TouchableOpacity onPress={() => { const e = engineRef.current; if (e instanceof BuiltinEngine) e.presentFullscreen(); }} hitSlop={hit}>
                             <Text style={styles.tb}>全屏</Text>
                         </TouchableOpacity>
                     )}
