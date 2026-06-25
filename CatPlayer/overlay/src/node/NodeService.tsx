@@ -140,6 +140,10 @@ function md5(str: string) {
 type Cb<T> = (v: T) => void;
 
 class NodeServiceImpl {
+    // [miraplay-feature-parity] native Node.js runtime handles server lifecycle now.
+    // This loop is fallback: the native runtime starts fastify internally, and
+    // the 'server-ready' message confirms the port. If native init succeeds,
+    // markReady() fires and init() returns early at line 319 — no WebView created.
     private started = false;
     private baseUrl: string | null = null;
     private wvRef: WebViewNodeRef | null = null;
@@ -308,6 +312,10 @@ class NodeServiceImpl {
         this.log(`init start (polyfillCode len=${polyfillCode.length})`);
 
         // 等待原生 Node.js 运行时就绪（1.2MB bundle on sim 需更长）
+        // [miraplay-feature-parity] native Node.js startup polling loop.
+        // tryNativeNode() runs in constructor; this init() path waits for
+        // the native runtime to fire 'server-ready'. If it never arrives,
+        // we fall through to WebView polyfill below.
         if (this.nodejs && !this.useNativeNode) {
             this.log('等待原生 Node.js 运行时...');
             for (let i = 0; i < 150; i++) {
@@ -331,7 +339,10 @@ class NodeServiceImpl {
             remoteUrl = active?.url || '';
         } catch {}
 
-        if (remoteUrl && remoteUrl !== SOURCE.base) {
+        // SOURCE.base may differ from DEFAULT_SOURCE.url (which includes /index.js.md5).
+        // Only treat as "custom remote" if it differs from the full default URL.
+        const defaultRemoteUrl = `${SOURCE.base}/index.js.md5`;
+        if (remoteUrl && remoteUrl !== defaultRemoteUrl) {
             // 自定义远程源：下载 bundle，检测类型
             this.log(`custom remote source: ${remoteUrl}`);
             try {
