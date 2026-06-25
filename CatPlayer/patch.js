@@ -59,21 +59,48 @@ const write = (p, c) => { fs.writeFileSync(p, c); console.log('  patched', path.
     write(p, s);
 })();
 
-// 3) Podfile — bump deployment target to 16.0 (iOS 16+ required)
+// 3) Podfile — bump deployment target to 16.0 + FRAMEWORK_SEARCH_PATHS for NodeMobile.framework
 (() => {
     const p = path.join(IOS, 'Podfile');
     if (!fs.existsSync(p)) { console.warn('  ! Podfile not found'); return; }
     let s = read(p);
-    if (/platform :ios, '16\.0'/.test(s)) { console.log('  Podfile already 16.0'); return; }
-    if (/platform :ios, min_ios_version_supported/.test(s)) {
-        s = s.replace(/platform :ios, min_ios_version_supported/, "platform :ios, '16.0'");
-        write(p, s);
-    } else if (/platform :ios, '[\d.]+'/.test(s)) {
-        s = s.replace(/platform :ios, '[\d.]+'/, "platform :ios, '16.0'");
-        write(p, s);
-    } else {
-        console.warn('  ! Podfile platform line not found');
+    let changed = false;
+
+    // Deployment target → 16.0
+    if (!/platform :ios, '16\.0'/.test(s)) {
+        if (/platform :ios, min_ios_version_supported/.test(s)) {
+            s = s.replace(/platform :ios, min_ios_version_supported/, "platform :ios, '16.0'");
+            changed = true;
+        } else if (/platform :ios, '[\d.]+'/.test(s)) {
+            s = s.replace(/platform :ios, '[\d.]+'/, "platform :ios, '16.0'");
+            changed = true;
+        } else {
+            console.warn('  ! Podfile platform line not found');
+        }
     }
+
+    // FRAMEWORK_SEARCH_PATHS variable pointing to local NodeMobile.framework
+    if (!s.includes('$nodeMobileSearchPath')) {
+        s = s.replace(/platform :ios, '16\.0'/, "platform :ios, '16.0'\n$nodeMobileSearchPath = '../Frameworks'");
+        changed = true;
+    }
+
+    // Inject FRAMEWORK_SEARCH_PATHS into existing post_install hook (inside the block)
+    if (!s.includes('FRAMEWORK_SEARCH_PATHS') && s.includes('post_install')) {
+        s = s.replace(/(post_install do \|installer\|)(\s*\n)/, function(match) {
+            return match + [
+                '  # FRAMEWORK_SEARCH_PATHS for NodeMobile.framework',
+                '  installer.pods_project.targets.each do |target|',
+                '    target.build_configurations.each do |config|',
+                "      config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)', $nodeMobileSearchPath]",
+                '    end',
+                '  end',
+            ].join('\n') + '\n';
+        });
+        changed = true;
+    }
+
+    if (changed) { write(p, s); } else { console.log('  Podfile already patched'); }
 })();
 
 console.log('patch.js done.');

@@ -40,7 +40,16 @@ mkdir -p nodejs-assets 2>/dev/null || true  # 保留目录兼容性
 echo "▶ installing JS deps …"
 npm install
 if [ "$MINIMAL" = "false" ]; then
-    npm install --save react-native-webview react-native-fs react-native-video@5.2.2
+    npm install --save react-native-webview react-native-fs react-native-video@5.2.2 nodejs-mobile-react-native
+    echo "▶ extracting NodeMobile.framework (Node.js runtime) …"
+    mkdir -p Frameworks
+    NMF="node_modules/nodejs-mobile-react-native/ios/NodeMobile.xcframework/ios-arm64/NodeMobile.framework"
+    if [ -d "$NMF" ]; then
+        cp -R "$NMF" "Frameworks/NodeMobile.framework"
+        echo "  NodeMobile.framework: $(du -sh Frameworks/NodeMobile.framework | awk '{print $1}')"
+    else
+        echo "  ! NodeMobile.framework not found in npm package — check nodejs-mobile-react-native install"
+    fi
 fi
 
 echo "▶ inlining polyfill source (avoids Hermes Function.prototype.toString() bug) …"
