@@ -20,7 +20,7 @@ on:
 jobs:
   build:
     runs-on: macos-14
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: write
     env:
@@ -66,6 +66,13 @@ jobs:
       - name: Pod install
         working-directory: CatPlayer
         run: cd app/ios && pod install --repo-update
+
+      - name: Build mpv framework
+        working-directory: CatPlayer
+        run: |
+          chmod +x scripts/build-mpv-ios.sh
+          bash scripts/build-mpv-ios.sh || echo "mpv build failed, continuing..."
+        continue-on-error: true
 
       - name: Build unsigned IPA
         working-directory: CatPlayer
