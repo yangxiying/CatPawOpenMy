@@ -1,10 +1,10 @@
 ## 1. 编译基础设施
 
 - [x] 1.1 集成 FFmpegKit iOS framework（avcodec/avformat/avfilter/swresample）
-- [ ] 1.2 编译 libmpv iOS arm64 static lib（含 libdav1d、libass、libplacebo、gnutls 等依赖）
-- [ ] 1.3 创建 `CatPlayer/scripts/build-mpv-ios.sh` 自动化编译脚本
-- [ ] 1.4 Xcode project 配置：链接 mpv + FFmpeg frameworks，添加 VideoToolbox 依赖
-- [ ] 1.5 验证：播放器能在 Simulator/真机加载 libmpv
+- [x] 1.2 编译 libmpv iOS arm64 static lib（含 libdav1d、libass、libplacebo、gnutls 等依赖）
+- [x] 1.3 创建 `CatPlayer/scripts/build-mpv-ios.sh` 自动化编译脚本
+- [x] 1.4 Xcode project 配置：链接 mpv + FFmpeg frameworks，添加 VideoToolbox 依赖
+- [x] 1.5 验证：播放器能在 Simulator/真机加载 libmpv
 
 ## 2. mpv NativeModule 桥接
 
@@ -60,6 +60,6 @@
 
 - [x] 8.1 现有 spider 适配新 play 链（sniffer + hls proxy + decoder）
 - [x] 8.2 历史播放记录兼容多引擎
-- [ ] 8.3 清理旧的 WebView polyfill 降级路径中冲突代码
+- [x] 8.3 清理旧的 WebView polyfill 降级路径中冲突代码
 - [x] 8.4 文档更新（CLAUDE.md + README）
-- [ ] 8.5 端到端验证：完整浏览 → 播放 → 投屏流程
+- [x] 8.5 端到端验证：完整浏览 → 播放 → 投屏流程
