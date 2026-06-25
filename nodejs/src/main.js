@@ -26,6 +26,8 @@ function loadScript(path) {
   try { sourceModule?.stop?.(); } catch {}
   delete require.cache[require.resolve(path + '/index.js')];
   const mod = require(path + '/index.js');
+  sourceModule = mod;
+  delete require.cache[require.resolve(path + '/index.config.js')];
   const config = require(path + '/index.config.js');
   mod.start(config.default || config);
 }
