@@ -1,166 +1,25 @@
 /**
- * NodeService — 用隐藏 WebView 执行 Node.js 源 bundle，通过 postMessage 桥通信。
- * 替代 nodejs-mobile-react-native（iOS 18 兼容问题）。
+ * NodeService — NodeMobile 主运行时路径。
+ * 使用 nodejs-mobile-react-native 原生 Node.js 运行时替代隐藏 WebView polyfill。
  */
-import React, { useRef, useCallback, useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import WebViewNode, { WebViewNodeRef } from './WebViewNode';
-import { BridgeRequest, BridgeResponse, rejectAll } from './bridge';
-import { SOURCE } from '../config';
+import { useEffect, useState } from 'react';
 import RNFS from 'react-native-fs';
-import { Platform } from 'react-native';
-
-// polyfill 源码（同步注入 WebView）
-let polyfillCode: string = '';
-try {
-    polyfillCode = require('./polyfill-string').polyfillCode;
-} catch {
-    try {
-        polyfillCode = require('./polyfills.js').toString();
-    } catch {
-        polyfillCode = '// polyfill load failed';
-    }
-}
-
-// 内嵌爬虫服务 bundle（CI 构建 nodejs/ 后内联）。存在则本地运行服务源，
-// 不再下载远程"网站源"（cloud-drive 配置页）。
-let embeddedSpiderCode = '';
-let embeddedSpiderConfig = '';
-try {
-    const m = require('./spider-bundle-string');
-    embeddedSpiderCode = m.spiderBundleCode || '';
-    embeddedSpiderConfig = m.spiderConfigCode || '';
-} catch {}
-
-// 简易 MD5 实现
-function md5(str: string) {
-    function toUtf8(s: string) {
-        return unescape(encodeURIComponent(s));
-    }
-    const s = toUtf8(str);
-    function rotl(n: number, c: number) { return (n << c) | (n >>> (32 - c)); }
-    function cmn(q: number, a: number, b: number, x: number, s2: number, t: number) {
-        a = (a + q + x + t) | 0;
-        return ((rotl(a, s2) + b) | 0) >>> 0;
-    }
-    function ff(a: number, b: number, c: number, d: number, x: number, s2: number, t: number) { return cmn((b & c) | (~b & d), a, b, x, s2, t); }
-    function gg(a: number, b: number, c: number, d: number, x: number, s2: number, t: number) { return cmn((b & d) | (c & ~d), a, b, x, s2, t); }
-    function hh(a: number, b: number, c: number, d: number, x: number, s2: number, t: number) { return cmn(b ^ c ^ d, a, b, x, s2, t); }
-    function ii(a: number, b: number, c: number, d: number, x: number, s2: number, t: number) { return cmn(c ^ (b | ~d), a, b, x, s2, t); }
-    function toWords(str2: string) {
-        const n = str2.length;
-        const words: number[] = [];
-        for (let i = 0; i < n; i += 4) {
-            words[i >> 2] = (str2.charCodeAt(i) & 0xff) | ((str2.charCodeAt(i + 1) & 0xff) << 8) | ((str2.charCodeAt(i + 2) & 0xff) << 16) | ((str2.charCodeAt(i + 3) & 0xff) << 24);
-        }
-        return words;
-    }
-    const bytes = s;
-    const bitLen = bytes.length * 8;
-    let words = toWords(bytes);
-    const idx = bytes.length;
-    words[idx >> 2] = (words[idx >> 2] || 0) | (0x80 << ((idx % 4) * 8));
-    const needed = (((idx + 8) >> 6) + 1) * 16;
-    while (words.length < needed) words.push(0);
-    words[needed - 2] = bitLen & 0xffffffff;
-    words[needed - 1] = (bitLen / 0x100000000) >>> 0;
-    let a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
-    for (let i = 0; i < words.length; i += 16) {
-        const olda = a, oldb = b, oldc = c, oldd = d;
-        a = ff(a, b, c, d, words[i + 0], 7, -680876936);
-        d = ff(d, a, b, c, words[i + 1], 12, -389564586);
-        c = ff(c, d, a, b, words[i + 2], 17, 606105819);
-        b = ff(b, c, d, a, words[i + 3], 22, -1044525330);
-        a = ff(a, b, c, d, words[i + 4], 7, -176418897);
-        d = ff(d, a, b, c, words[i + 5], 12, 1200080426);
-        c = ff(c, d, a, b, words[i + 6], 17, -1473231341);
-        b = ff(b, c, d, a, words[i + 7], 22, -45705983);
-        a = ff(a, b, c, d, words[i + 8], 7, 1770035416);
-        d = ff(d, a, b, c, words[i + 9], 12, -1958414417);
-        c = ff(c, d, a, b, words[i + 10], 17, -42063);
-        b = ff(b, c, d, a, words[i + 11], 22, -1990404162);
-        a = ff(a, b, c, d, words[i + 12], 7, 1804603682);
-        d = ff(d, a, b, c, words[i + 13], 12, -40341101);
-        c = ff(c, d, a, b, words[i + 14], 17, -1502002290);
-        b = ff(b, c, d, a, words[i + 15], 22, 1236535329);
-        a = gg(a, b, c, d, words[i + 1], 5, -165796510);
-        d = gg(d, a, b, c, words[i + 6], 9, -1069501632);
-        c = gg(c, d, a, b, words[i + 11], 14, 643717713);
-        b = gg(b, c, d, a, words[i + 0], 20, -373897302);
-        a = gg(a, b, c, d, words[i + 5], 5, -701558691);
-        d = gg(d, a, b, c, words[i + 10], 9, 38016083);
-        c = gg(c, d, a, b, words[i + 15], 14, -660478335);
-        b = gg(b, c, d, a, words[i + 4], 20, -405537848);
-        a = gg(a, b, c, d, words[i + 9], 5, 568446438);
-        d = gg(d, a, b, c, words[i + 14], 9, -1019803690);
-        c = gg(c, d, a, b, words[i + 3], 14, -187363961);
-        b = gg(b, c, d, a, words[i + 8], 20, 1163531501);
-        a = gg(a, b, c, d, words[i + 13], 5, -1444681467);
-        d = gg(d, a, b, c, words[i + 2], 9, -51403784);
-        c = gg(c, d, a, b, words[i + 7], 14, 1735328473);
-        b = gg(b, c, d, a, words[i + 12], 20, -1926607734);
-        a = hh(a, b, c, d, words[i + 5], 4, -378558);
-        d = hh(d, a, b, c, words[i + 8], 11, -2022574463);
-        c = hh(c, d, a, b, words[i + 11], 16, 1839030562);
-        b = hh(b, c, d, a, words[i + 14], 23, -35309556);
-        a = hh(a, b, c, d, words[i + 1], 4, -1530992060);
-        d = hh(d, a, b, c, words[i + 4], 11, 1272893353);
-        c = hh(c, d, a, b, words[i + 7], 16, -155497632);
-        b = hh(b, c, d, a, words[i + 10], 23, -1094730640);
-        a = hh(a, b, c, d, words[i + 13], 4, 681279174);
-        d = hh(d, a, b, c, words[i + 0], 11, -358537222);
-        c = hh(c, d, a, b, words[i + 3], 16, -722521979);
-        b = hh(b, c, d, a, words[i + 6], 23, 76029189);
-        a = hh(a, b, c, d, words[i + 9], 4, -640364487);
-        d = hh(d, a, b, c, words[i + 12], 11, -421815835);
-        c = hh(c, d, a, b, words[i + 15], 16, 530742520);
-        b = hh(b, c, d, a, words[i + 2], 23, -995338651);
-        a = ii(a, b, c, d, words[i + 0], 6, -198630844);
-        d = ii(d, a, b, c, words[i + 7], 10, 1126891415);
-        c = ii(c, d, a, b, words[i + 14], 15, -1416354905);
-        b = ii(b, c, d, a, words[i + 5], 21, -57434055);
-        a = ii(a, b, c, d, words[i + 12], 6, 1700485571);
-        d = ii(d, a, b, c, words[i + 3], 10, -1894986606);
-        c = ii(c, d, a, b, words[i + 10], 15, -1051523);
-        b = ii(b, c, d, a, words[i + 1], 21, -2054922799);
-        a = ii(a, b, c, d, words[i + 8], 6, 1873313359);
-        d = ii(d, a, b, c, words[i + 15], 10, -30611744);
-        c = ii(c, d, a, b, words[i + 6], 15, -1560198380);
-        b = ii(b, c, d, a, words[i + 13], 21, 1309151649);
-        a = ii(a, b, c, d, words[i + 4], 6, -145523070);
-        d = ii(d, a, b, c, words[i + 11], 10, -1120210379);
-        c = ii(c, d, a, b, words[i + 2], 15, 718787259);
-        b = ii(b, c, d, a, words[i + 9], 21, -343485551);
-        a = (a + olda) | 0; b = (b + oldb) | 0; c = (c + oldc) | 0; d = (d + oldd) | 0;
-    }
-    function hex(x: number) { const h = [(x & 0xff), (x >>> 8) & 0xff, (x >>> 16) & 0xff, (x >>> 24) & 0xff]; return h.map(v => v.toString(16).padStart(2, '0')).join(''); }
-    return (hex(a) + hex(b) + hex(c) + hex(d)).toLowerCase();
-}
+import { BridgeRequest, BridgeResponse } from './bridge';
 
 type Cb<T> = (v: T) => void;
 
 class NodeServiceImpl {
-    // [miraplay-feature-parity] native Node.js runtime handles server lifecycle now.
-    // This loop is fallback: the native runtime starts fastify internally, and
-    // the 'server-ready' message confirms the port. If native init succeeds,
-    // markReady() fires and init() returns early at line 319 — no WebView created.
     private started = false;
     private baseUrl: string | null = null;
-    private wvRef: WebViewNodeRef | null = null;
     private logCbs: Cb<string>[] = [];
     private errCbs: Cb<string>[] = [];
-    private bundleCode: string = '';
-    private configCode: string = '';
-    private _isWebsiteSource = false;
     private readyResolve: (() => void) | null = null;
     private readyPromise: Promise<void>;
     private ready = false;
     private renderTrigger: (() => void) | null = null;
     private refreshCount = 0;
     private playCbs: Cb<{ url: string; title?: string }>[] = [];
-    private sourceTypeCbs: Cb<boolean>[] = [];
     remoteSourceUrl: string = '';
-    // 原生 Node.js 运行时（nodejs-mobile-react-native）
     private nodejs: any = null;
     private useNativeNode = false;
     private nativeNodePort = 0;
@@ -173,13 +32,13 @@ class NodeServiceImpl {
     /** 尝试初始化原生 Node.js 运行时 */
     private async tryNativeNode() {
         try {
-            console.log("[NodeJS] trying module...");
-            const NodeJS = require("nodejs-mobile-react-native");
-            console.log("[NodeJS] require result:", typeof NodeJS, NodeJS ? Object.keys(NodeJS).join(',') : 'null');
+            console.log('[NodeJS] trying module...');
+            const NodeJS = require('nodejs-mobile-react-native');
+            console.log('[NodeJS] require result:', typeof NodeJS, NodeJS ? Object.keys(NodeJS).join(',') : 'null');
             this.nodejs = NodeJS;
-            console.log("[NodeJS] module loaded OK, starting main.js...", typeof NodeJS?.start);
+            console.log('[NodeJS] module loaded OK, starting main.js...', typeof NodeJS?.start);
             NodeJS.start('main.js');
-            console.log("[NodeJS] main.js started, channel listener setup...");
+            console.log('[NodeJS] main.js started, channel listener setup...');
             NodeJS.channel.on('message', (msg: string) => {
                 try {
                     const data = JSON.parse(msg);
@@ -202,25 +61,11 @@ class NodeServiceImpl {
                     }
                 } catch {}
             });
-            console.log("[NodeJS] initialization complete");
+            console.log('[NodeJS] initialization complete');
         } catch (e: any) {
             console.log(`[NodeJS] FAILED: ${e?.message || e}`);
             this.useNativeNode = false;
             this.nodejs = null;
-        }
-    }
-
-    get isWebsiteSource() { return this._isWebsiteSource; }
-
-    onSourceTypeChange(cb: Cb<boolean>) {
-        this.sourceTypeCbs.push(cb);
-        return () => { this.sourceTypeCbs = this.sourceTypeCbs.filter(c => c !== cb); };
-    }
-
-    private setIsWebsiteSource(v: boolean) {
-        if (this._isWebsiteSource !== v) {
-            this._isWebsiteSource = v;
-            this.sourceTypeCbs.forEach(cb => cb(v));
         }
     }
 
@@ -247,6 +92,7 @@ class NodeServiceImpl {
         this.logCbs.push(cb);
         return () => { this.logCbs = this.logCbs.filter(c => c !== cb); };
     }
+
     onError(cb: Cb<string>) {
         this.errCbs.push(cb);
         return () => { this.errCbs = this.errCbs.filter(c => c !== cb); };
@@ -259,9 +105,6 @@ class NodeServiceImpl {
         this.started = false;
         this.ready = false;
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
-        this.bundleCode = '';
-        this.configCode = '';
-        this.setIsWebsiteSource(false);
         this.init();
     }
 
@@ -270,16 +113,9 @@ class NodeServiceImpl {
         this.started = false;
         this.ready = false;
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
-        this.bundleCode = '';
-        this.configCode = '';
-        this.setIsWebsiteSource(false);
-        try {
-            const dir = Platform.OS === 'ios'
-                ? `${RNFS.DocumentDirectoryPath}/catplayer`
-                : `${RNFS.DocumentDirectoryPath}/catplayer`;
-            await RNFS.unlink(`${dir}/index.js`).catch(() => {});
-            await RNFS.unlink(`${dir}/index.config.js`).catch(() => {});
-        } catch {}
+        const dir = `${RNFS.DocumentDirectoryPath}/catplayer`;
+        await RNFS.unlink(`${dir}/index.js`).catch(() => {});
+        await RNFS.unlink(`${dir}/index.config.js`).catch(() => {});
         await this.init();
     }
 
@@ -290,47 +126,33 @@ class NodeServiceImpl {
         this.started = false;
         this.ready = false;
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
-        this.bundleCode = '';
-        this.configCode = '';
-        this.setIsWebsiteSource(false);
-        try {
-            const dir = Platform.OS === 'ios'
-                ? `${RNFS.DocumentDirectoryPath}/catplayer`
-                : `${RNFS.DocumentDirectoryPath}/catplayer`;
-            await RNFS.unlink(`${dir}/index.js`).catch(() => {});
-            await RNFS.unlink(`${dir}/index.config.js`).catch(() => {});
-            await RNFS.unlink(`${dir}/.md5`).catch(() => {});
-            await RNFS.unlink(`${dir}/index.md5`).catch(() => {});
-            this.log('forceRefresh: cache cleared');
-        } catch (e) { this.log(`forceRefresh: clear error: ${e}`); }
+        const dir = `${RNFS.DocumentDirectoryPath}/catplayer`;
+        await RNFS.unlink(`${dir}/index.js`).catch(() => {});
+        await RNFS.unlink(`${dir}/index.config.js`).catch(() => {});
+        await RNFS.unlink(`${dir}/.md5`).catch(() => {});
+        await RNFS.unlink(`${dir}/index.md5`).catch(() => {});
+        this.log('forceRefresh: cache cleared');
         await this.init();
     }
 
     async init() {
         if (this.started) return;
         this.started = true;
-        this.log(`init start (polyfillCode len=${polyfillCode.length})`);
+        this.log('init start (NodeMobile path)');
 
-        // 等待原生 Node.js 运行时就绪（1.2MB bundle on sim 需更长）
-        // [miraplay-feature-parity] native Node.js startup polling loop.
-        // tryNativeNode() runs in constructor; this init() path waits for
-        // the native runtime to fire 'server-ready'. If it never arrives,
-        // we fall through to WebView polyfill below.
+        // 等待原生 Node.js 运行时就绪（事件驱动，等待 server-ready）
         if (this.nodejs && !this.useNativeNode) {
-            this.log('等待原生 Node.js 运行时...');
-            for (let i = 0; i < 150; i++) {
-                if (this.useNativeNode) break;
-                await new Promise(r => setTimeout(r, 100));
-            }
-            if (this.useNativeNode) {
-                this.log(`原生 Node.js 就绪 (port ${this.nativeNodePort})，跳过 WebView`);
-                this.markReady();
-                return;
-            }
-            this.log('原生 Node.js 超时未就绪，回退 WebView');
+            this.log('等待原生 Node.js 运行时就绪...');
+            await this.waitForReady();
         }
 
-        // 始终从远程源 URL 下载 bundle 解析
+        if (!this.useNativeNode) {
+            this.error('Node.js 运行时未就绪');
+            return;
+        }
+        this.log(`原生 Node.js 就绪 (port ${this.nativeNodePort})`);
+
+        // 从远程源 URL 下载 bundle
         let remoteUrl = '';
         try {
             const { StorageService } = require('../storage/StorageService');
@@ -340,15 +162,13 @@ class NodeServiceImpl {
         } catch {}
 
         if (!remoteUrl) {
-            this.error('no source URL configured');
+            this.error('未配置源 URL，请进入 Settings 设置');
             return;
         }
 
         this.log(`downloading source: ${remoteUrl}`);
         try {
-            const dir = Platform.OS === 'ios'
-                ? `${RNFS.DocumentDirectoryPath}/catplayer`
-                : `${RNFS.DocumentDirectoryPath}/catplayer`;
+            const dir = `${RNFS.DocumentDirectoryPath}/catplayer`;
             await RNFS.mkdir(dir).catch(() => {});
 
             // 解析 base URL
@@ -367,81 +187,52 @@ class NodeServiceImpl {
                 }
             } catch {}
 
-            // MD5 校验
+            // MD5 校验（直接字符串比对，不需要手动 MD5 计算）
             this.log('fetching remote md5…');
-            await RNFS.downloadFile({ fromUrl: md5Url, toFile: `${dir}/index.md5`, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+            const md5Headers = authHeader ? { Authorization: authHeader } : {};
+            await RNFS.downloadFile({ fromUrl: md5Url, toFile: `${dir}/index.md5`, headers: md5Headers }).promise;
             const wantMd5 = (await RNFS.readFile(`${dir}/index.md5`, 'utf8')).trim();
             let cachedMd5 = '';
             try { cachedMd5 = (await RNFS.readFile(`${dir}/.md5`, 'utf8')).trim(); } catch {}
 
             const idxExists = await RNFS.exists(idxPath).catch(() => false);
-            let localOk = false;
-            if (idxExists) {
-                try {
-                    const content = await RNFS.readFile(idxPath, 'utf8');
-                    localOk = md5(content).trim() === wantMd5;
-                } catch {}
-            }
-
-            if (cachedMd5 !== wantMd5 || !localOk) {
+            if (!idxExists || cachedMd5 !== wantMd5) {
                 this.log('downloading index.js…');
-                await RNFS.downloadFile({ fromUrl: jsUrl, toFile: idxPath, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
-                await RNFS.downloadFile({ fromUrl: baseNoMd5 + '/index.config.js', toFile: cfgPath, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+                const dlHeaders = authHeader ? { Authorization: authHeader } : {};
+                await RNFS.downloadFile({ fromUrl: jsUrl, toFile: idxPath, headers: dlHeaders }).promise;
+                await RNFS.downloadFile({ fromUrl: baseNoMd5 + '/index.config.js', toFile: cfgPath, headers: dlHeaders }).promise;
                 await RNFS.writeFile(`${dir}/.md5`, wantMd5, 'utf8');
             } else {
                 this.log('cache hit');
             }
 
-            this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
-            this.configCode = await RNFS.readFile(cfgPath, 'utf8');
-            const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
-            this.setIsWebsiteSource(isWeb);
-            this.log(`bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
-            if (isWeb) this.log('  类型: 网站源');
-            this.log('triggering WebView render…');
-            this.renderTrigger?.();
-            this.log('WebView render triggered');
+            // 通过 rn-bridge 发送 run 指令到 Node.js main.js
+            this.nodejs.channel.send(JSON.stringify({
+                action: 'run',
+                path: dir,
+            }));
+            this.log('Node.js spider bundle loaded');
         } catch (e: any) {
             this.error(String(e?.message || e));
         }
     }
 
-    /** 切换源地址后重新检测源类型 */
+    /** 切换源地址后重新加载 */
     async reloadSource() {
-        this.log('reloadSource: re-detecting source type...');
-        this.setIsWebsiteSource(false);
         this.started = false;
         this.ready = false;
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
-        this.bundleCode = '';
-        this.configCode = '';
         await this.init();
-    }
-
-    private async downloadFile(url: string, dir: string, filename?: string): Promise<string> {
-        const dest = filename ? `${dir}/${filename}` : `${dir}/tmp_${Date.now()}`;
-        await RNFS.downloadFile({ fromUrl: url, toFile: dest, headers: { Authorization: `Basic ${SOURCE.auth}` } }).promise;
-        return dest;
     }
 
     public log(msg: string) { this.logCbs.forEach(cb => cb(msg)); }
     public error(msg: string) { this.errCbs.forEach(cb => cb(msg)); }
 
-    setWebViewRef(ref: WebViewNodeRef | null) { this.wvRef = ref; }
-
-    isNativeNodeReady(): boolean { return this.useNativeNode; }
-
     async request(req: BridgeRequest): Promise<BridgeResponse> {
-        // 优先使用原生 Node.js 运行时（直连 HTTP）
         if (this.useNativeNode && this.nativeNodePort > 0) {
-            try {
-                return await this.nativeNodeRequest(req);
-            } catch (e: any) {
-                this.log(`native node request failed: ${e?.message || e}, falling back`);
-            }
+            return await this.nativeNodeRequest(req);
         }
-        if (!this.wvRef) throw new Error('WebView not ready');
-        return this.wvRef.request(req);
+        throw new Error('Node.js runtime not ready');
     }
 
     private async nativeNodeRequest(req: BridgeRequest): Promise<BridgeResponse> {
@@ -471,72 +262,19 @@ class NodeServiceImpl {
     }
 
     getBaseUrl(): Promise<string> { return Promise.resolve('bridge://local'); }
-    getBundleCode(): string { return this.bundleCode; }
-    getConfigCode(): string { return this.configCode; }
     getRefreshCount(): number { return this.refreshCount; }
 }
 
 const nodeService = new NodeServiceImpl();
 export default nodeService;
 
-/** React 组件：包裹隐藏 WebView，需挂载在 App 里 */
-export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
-    const [logs, setLogs] = useState<string[]>([]);
-    const [err, setErr] = useState<string | null>(null);
+/** React 组件占位 — NodeMobile 路径不再需要隐藏 WebView */
+export function NodeWebView(_props: { visible?: boolean }) {
     const [, forceRender] = useState(0);
-    const wvRef = useRef<WebViewNodeRef | null>(null);
-
-    const setWvRef = useCallback((ref: WebViewNodeRef | null) => {
-        wvRef.current = ref;
-        nodeService.setWebViewRef(ref);
-    }, []);
-
     useEffect(() => {
         nodeService.setRenderTrigger(() => forceRender(v => v + 1));
         nodeService.init();
         return () => { nodeService.setRenderTrigger(null); };
     }, []);
-
-    const handleReady = useCallback((port: number) => {
-        setLogs(l => [...l, `server ready (port ${port})`]);
-        nodeService.markReady();
-    }, []);
-
-    const handleError = useCallback((msg: string) => {
-        setErr(msg);
-        setLogs(l => [...l, `error: ${msg}`]);
-        nodeService.error(msg);
-    }, []);
-
-    const handleLog = useCallback((msg: string) => {
-        setLogs(l => [...l.slice(-19), msg]);
-        nodeService.log(msg);
-    }, []);
-
-    const handlePlay = useCallback((url: string, title?: string) => {
-        nodeService.triggerPlay(url, title);
-    }, []);
-
-    const code = nodeService.getBundleCode();
-    if (!code || nodeService.isNativeNodeReady()) { return null; }
-
-    return (
-        <WebViewNode
-            key={nodeService.getRefreshCount()}
-            ref={setWvRef}
-            bundleCode={code}
-            configCode={nodeService.getConfigCode()}
-            polyfillCode={polyfillCode}
-            onReady={handleReady}
-            onError={handleError}
-            onLog={handleLog}
-            visible={forcedVisible ?? false}
-            onPlay={handlePlay}
-        />
-    );
+    return null;
 }
-
-const styles = StyleSheet.create({
-    hidden: { position: 'absolute', width: 1, height: 1, opacity: 0, top: -9999 },
-    visible: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
-});

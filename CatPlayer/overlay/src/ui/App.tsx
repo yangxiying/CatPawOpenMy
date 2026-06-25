@@ -40,7 +40,6 @@ function isTabRoot(name: string): boolean {
 export default function App() {
     const [stack, setStack] = useState<Route[]>([{ name: 'Demo' }]);
     const [activeTab, setActiveTab] = useState('home');
-    const [isWebSrc, setIsWebSrc] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const [showLogs, setShowLogs] = useState(false);
     const [logCopied, setLogCopied] = useState(false);
@@ -50,13 +49,6 @@ export default function App() {
         pop: () => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)),
         replace: (name, params) => setStack(s => [...s.slice(0, -1), { name, params }]),
     }), []);
-
-    /** 监听源类型变化，网站源时全屏显示 WebView */
-    useEffect(() => {
-        const off = NodeService.onSourceTypeChange(setIsWebSrc);
-        setIsWebSrc(NodeService.isWebsiteSource);
-        return off;
-    }, []);
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
