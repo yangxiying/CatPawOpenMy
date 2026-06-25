@@ -13,6 +13,7 @@ cd "$IOS"
 rm -rf "$DD" "$IOS/build/Payload" "$IOS/build/CatPlayer.ipa"
 
 echo "▶ xcodebuild (Release, iphoneos, unsigned) …"
+export NODEJS_MOBILE_BUILD_NATIVE_MODULES=0
 xcodebuild \
     -workspace CatPlayer.xcworkspace \
     -scheme CatPlayer \
@@ -23,8 +24,7 @@ xcodebuild \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY="" \
     AD_HOC_CODE_SIGNING_ALLOWED=YES \
-    NODEJS_MOBILE_BUILD_NATIVE_MODULES=0 \
-    | tail -30
+    2>&1 | tee /tmp/xcodebuild.log | tail -50
 
 echo "--- looking for .app ---"
 find "$DD" -name "CatPlayer.app" -type d 2>/dev/null
