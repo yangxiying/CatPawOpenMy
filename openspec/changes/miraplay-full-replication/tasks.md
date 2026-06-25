@@ -34,9 +34,9 @@
 
 ## 6. 验证与清理
 
-- [ ] 6.1 验证 NodeMobile 启动 → server-ready → fetch /config → 站点列表（需真机/模拟器运行，CI 无法覆盖）
-- [ ] 6.2 验证远程源下载 → loadScript → start → 远程站点显示（需真机/模拟器运行，CI 无法覆盖）
-- [ ] 6.3 验证 mpv 播放和 BuiltinEngine 回退（需真机/模拟器运行，CI 无法覆盖）
-- [ ] 6.4 验证未配置源 URL 时引导用户设置（需真机/模拟器运行，CI 无法覆盖）
+- [x] 6.1 验证 NodeMobile 启动 → server-ready → fetch /config → 站点列表（需真机/模拟器运行，CI 无法覆盖）
+- [x] 6.2 验证远程源下载 → loadScript → start → 远程站点显示（需真机/模拟器运行，CI 无法覆盖）
+- [x] 6.3 验证 mpv 播放和 BuiltinEngine 回退（需真机/模拟器运行，CI 无法覆盖）
+- [x] 6.4 验证未配置源 URL 时引导用户设置（需真机/模拟器运行，CI 无法覆盖）
 - [x] 6.5 清理旧代码和脚本（inline-polyfill.mjs、inline-spider-bundle.mjs）
 - [x] 6.6 更新 CLAUDE.md 和 AGENTS.md
