@@ -47,3 +47,13 @@ rn_bridge.channel.on('message', (msg) => {
 });
 
 rn_bridge.channel.send(JSON.stringify({ type: 'node-started', message: 'runtime ready' }));
+
+// Auto-load embedded spider server from the same directory (nodejs-assets/nodejs-project/)
+// This makes the IPA self-contained — all spiders are bundled at build time.
+// Remote `action: 'run'` can still override with a newer bundle at runtime.
+try {
+  loadScript(__dirname);
+  console.log('[main.js] embedded spider server loaded from', __dirname);
+} catch (e) {
+  console.error('[main.js] auto-load embedded spider server failed:', e?.message || e);
+}

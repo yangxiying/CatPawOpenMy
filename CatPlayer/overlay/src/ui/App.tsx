@@ -38,7 +38,7 @@ function isTabRoot(name: string): boolean {
 }
 
 export default function App() {
-    const [stack, setStack] = useState<Route[]>([{ name: 'Demo' }]);
+    const [stack, setStack] = useState<Route[]>([{ name: 'Boot' }]);
     const [activeTab, setActiveTab] = useState('home');
     const [logs, setLogs] = useState<string[]>([]);
     const [showLogs, setShowLogs] = useState(false);

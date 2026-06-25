@@ -80,6 +80,11 @@ if [ "$MINIMAL" = "false" ]; then
         cp "$SPIDER_DIR/dist/nodejs-runtime.js" "$APP_DIR/nodejs-assets/nodejs-project/main.js"
         echo "  nodejs-runtime.js copied to nodejs-assets/"
     fi
+    # 复制蜘蛛服务 bundle（含所有爬虫），main.js 自动加载
+    if [ -f "$SPIDER_DIR/dist/index.js" ]; then
+        cp "$SPIDER_DIR/dist/index.js" "$APP_DIR/nodejs-assets/nodejs-project/index.js"
+        echo "  index.js (spider bundle) copied to nodejs-assets/"
+    fi
     if [ -f "$SPIDER_DIR/dist/index.config.js" ]; then
         cp "$SPIDER_DIR/dist/index.config.js" "$APP_DIR/nodejs-assets/nodejs-project/index.config.js"
         echo "  index.config.js copied to nodejs-assets/"
