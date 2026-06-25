@@ -59,11 +59,13 @@ class NodeServiceImpl {
                             }));
                         });
                     }
-                } catch {}
+                } catch (e: any) {
+                    console.error('[NodeJS] channel parse error:', e?.message);
+                }
             });
             console.log('[NodeJS] initialization complete');
         } catch (e: any) {
-            console.log(`[NodeJS] FAILED: ${e?.message || e}`);
+            this.error(`NodeJS 运行时加载失败: ${e?.message || e}`);
             this.useNativeNode = false;
             this.nodejs = null;
         }
@@ -100,12 +102,12 @@ class NodeServiceImpl {
 
     setRenderTrigger(cb: (() => void) | null) { this.renderTrigger = cb; }
 
-    retry() {
+    async retry() {
         this.refreshCount++;
         this.started = false;
         this.ready = false;
         this.readyPromise = new Promise(resolve => { this.readyResolve = resolve; });
-        this.init();
+        await this.init();
     }
 
     async refresh() {
@@ -212,6 +214,8 @@ class NodeServiceImpl {
                 path: dir,
             }));
             this.log('Node.js spider bundle loaded');
+            // retry/refresh 路径：useNativeNode 已为 true，标记 ready 避免死锁
+            if (this.useNativeNode && !this.ready) this.markReady();
         } catch (e: any) {
             this.error(String(e?.message || e));
         }
