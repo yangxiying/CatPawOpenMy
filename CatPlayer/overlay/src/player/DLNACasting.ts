@@ -1,4 +1,6 @@
 import { NativeModules, NativeEventEmitter } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, Modal, FlatList } from 'react-native';
 
 const { DLNACasting } = NativeModules;
 
@@ -59,9 +61,6 @@ class DLNACastingService {
 export const dlnaService = new DLNACastingService();
 
 /** React 组件：投屏设备列表弹窗 */
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList } from 'react-native';
-
 export function DLNAPicker({ visible, onClose, castUrl }: { visible: boolean; onClose: () => void; castUrl?: string }) {
   const [devices, setDevices] = useState<DLNADevice[]>([]);
   const [scanning, setScanning] = useState(false);
