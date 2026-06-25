@@ -84,6 +84,9 @@ if [ "$MINIMAL" = "false" ]; then
         cp "$SPIDER_DIR/dist/index.config.js" "$APP_DIR/nodejs-assets/nodejs-project/index.config.js"
         echo "  index.config.js copied to nodejs-assets/"
     fi
+    # Tell nodejs-mobile to skip building native modules (no .gyp modules needed)
+    echo 0 > "$APP_DIR/nodejs-assets/BUILD_NATIVE_MODULES.txt"
+    echo "  BUILD_NATIVE_MODULES.txt written (native modules build disabled)"
 fi
 
 echo "▶ patching native config …"
