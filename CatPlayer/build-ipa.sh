@@ -23,6 +23,7 @@ xcodebuild \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY="" \
     AD_HOC_CODE_SIGNING_ALLOWED=YES \
+    NODEJS_MOBILE_BUILD_NATIVE_MODULES=0 \
     | tail -30
 
 echo "--- looking for .app ---"
