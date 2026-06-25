@@ -1,0 +1,18 @@
+{
+  "change": "miraplay-full-replication",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "8882ecb14967a01700cae6859bd5b302fd49c1e2a9487591109d4182bbbf4cd3",
+  "files": [
+    { "path": "openspec/changes/miraplay-full-replication/proposal.md", "sha256": "9030e0d27a644439951d0ba3b4641c5a1db3fe352ae9aa9072ba7dc7ab57153c" },
+    { "path": "openspec/changes/miraplay-full-replication/design.md", "sha256": "14870fd8b64525fbca07768845b73847f0a2fc4a2079eac3c71e62318ed991a4" },
+    { "path": "openspec/changes/miraplay-full-replication/tasks.md", "sha256": "333e369fc9c6cc76c9aa572e97f37d5a361c8d424c5c460a3c283b16ec3bf1e7" },
+    { "path": "openspec/changes/miraplay-full-replication/specs/builtin-engine/spec.md", "sha256": "d0c6b35fc95613d54178eae5c2364a4d0377da3e836946904006c731572352e5" },
+    { "path": "openspec/changes/miraplay-full-replication/specs/mpv-engine-build/spec.md", "sha256": "04417e6c3618c9e2bfc08b9114d0aea3a030a0aa25b2eee00137d1df486e93ef" },
+    { "path": "openspec/changes/miraplay-full-replication/specs/native-runtime-bridge/spec.md", "sha256": "0c140aa1947716d1584076bfa54cb2b0b80e0084ecbd5f44aae2e57dcb4e0b56" },
+    { "path": "openspec/changes/miraplay-full-replication/specs/node-mobile-runtime/spec.md", "sha256": "1bfc11afd3993aed76ae2ee08fa1f7ee02619f6cb89b6f9ef98624149eb6c3ba" },
+    { "path": "openspec/changes/miraplay-full-replication/specs/remote-source-loading/spec.md", "sha256": "a65fd16992ecad85566cbf7526a5568946c08ed54d60eb26935a277d78c8a925" }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "change": "miraplay-feature-parity",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "a412d8a2e915e6027deddc4e4748724249bad7cc5e90c36d554b4fc734523504",
+  "files": [
+    { "path": "openspec/changes/miraplay-feature-parity/proposal.md", "sha256": "29f9ca2b09c1fbd272993ff999139613368c83db3f8a4c0def8b88ec5e7e45d2" },
+    { "path": "openspec/changes/miraplay-feature-parity/design.md", "sha256": "d50ccbbcc8e2cef18c9815502036d50ae9343b1d670d040a312f0f2ec3d60e19" },
+    { "path": "openspec/changes/miraplay-feature-parity/tasks.md", "sha256": "4df816866107a06b3538e4c521e66718b85451191769da76873b0dcc1e1403d1" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/crypto-decoder/spec.md", "sha256": "ab66b9dce05b7adf8e18b9893563e538d4b6d764ef22a979f9f7f4528a089a8c" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/dlna-casting/spec.md", "sha256": "f9f5e4ed572da9b1f67e9247dc35cdc4ac87fe24a50d3d882df3dc206e5ac75d" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/hls-proxy/spec.md", "sha256": "11885a257051aa20106830d700d0ed9ec9b30bfcb2848850ce05ade1a5da196c" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/nodejs-runtime-signaling/spec.md", "sha256": "5922403a1a54b11b5ea7b2734411f1be75a860dbab8a50630cc127f16fb600ae" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/play-spider/spec.md", "sha256": "367861c592c8d6477731d30e5fb872474fdbda5bf5994561444dde4efdd73beb" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/player-engine-mpv/spec.md", "sha256": "eb87b107eb0ecf75b5fa73e0ce12cd866ba98a73935e451f0bb467503927d344" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/player-ui-multisource/spec.md", "sha256": "f1ba50fd250a66809b63cea03c75d86adf69436f74464c2911e4da941fc6774f" },
+    { "path": "openspec/changes/miraplay-feature-parity/specs/url-sniffer/spec.md", "sha256": "0f7d8a8dc1eb43fae80709a21d49aa9d2ac8dd193c034f17c44268bbb18b4ba6" }
+  ]
+}

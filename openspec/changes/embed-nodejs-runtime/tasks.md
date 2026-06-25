@@ -40,8 +40,16 @@
 
 ## Phase 5：验证与收尾
 
-- [ ] **5.1 测试内置 spider**
-- [ ] **5.2 测试远程 bundle（cat.999888123.xyz）**
+- [x] **5.1 测试内置 spider**
+- [x] **5.2 测试远程 bundle（9280.kstore.vip/cat）**
 - [ ] **5.3 测试降级方案（WebView polyfill）**
 - [ ] **5.4 清理旧代码和诊断日志**
 - [ ] **5.5 更新文档**
+
+## Phase 6：MiraPlay iOS 验证
+
+- [x] **6.1 内联 spider bundle（nodejs/dist → spider-bundle-string.ts）**
+- [x] **6.2 配置源 URL（overlay/src/config.ts = 9280.kstore.vip/cat）**
+- [x] **6.3 应用 overlay 到 app/（setup.sh 等价操作）**
+- [x] **6.4 Metro bundle 编译验证**
+- [ ] **6.5 iOS 模拟器运行测试**
