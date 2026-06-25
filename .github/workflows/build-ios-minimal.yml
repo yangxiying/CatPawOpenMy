@@ -25,10 +25,6 @@ jobs:
           chmod +x setup.sh build-ipa.sh
           ./setup.sh --skip-pod --minimal
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
       - name: Pod install
         working-directory: CatPlayer
         run: cd app/ios && pod install --repo-update

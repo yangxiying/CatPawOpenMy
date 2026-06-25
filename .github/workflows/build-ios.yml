@@ -12,7 +12,7 @@ on:
           - full
           - minimal
   push:
-    branches: [main, feat/catplayer-ios, feature/20260624/miraplay-feature-parity]
+    branches: [main, feat/catplayer-ios, feature/20260625/miraplay-full-replication]
     paths:
       - 'CatPlayer/**'
       - '.github/workflows/build-ios.yml'
@@ -58,10 +58,6 @@ jobs:
           echo "--- After setup.sh ---"
           ls -la app/ || echo "app/ still missing after setup.sh!"
           cat app/package.json 2>/dev/null || echo "package.json still missing!"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
 
       - name: Pod install
         working-directory: CatPlayer
