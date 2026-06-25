@@ -52,18 +52,10 @@ if [ "$MINIMAL" = "false" ]; then
     fi
 fi
 
-echo "▶ inlining polyfill source (avoids Hermes Function.prototype.toString() bug) …"
-node "$HERE/scripts/inline-polyfill.mjs"
-
 echo "▶ building embedded spider server (nodejs/) …"
 SPIDER_DIR="$HERE/../nodejs"
 if [ -f "$SPIDER_DIR/package.json" ]; then
     ( cd "$SPIDER_DIR" && npm install && npm run build )
-    echo "▶ inlining spider server bundle …"
-    node "$HERE/scripts/inline-spider-bundle.mjs"
-else
-    echo "  ! nodejs/ not found — skipping (App will fall back to remote download)"
-    node "$HERE/scripts/inline-spider-bundle.mjs" || true
 fi
 
 echo "▶ applying overlay (RN source) …"
