@@ -1,26 +1,63 @@
-# Task 5 Report: URL Sniffing Infrastructure
+# Task 5 Report: BuiltinEngine 补全
 
-## Changes Summary
-- **`CatPlayer/app/ios/CatPlayer/PlayerBridge/SniffModule.h`** — RCTBridgeModule interface declaring `sniff:rule:timeout:resolver:rejecter:`
-- **`CatPlayer/app/ios/CatPlayer/PlayerBridge/SniffModule.m`** — Full implementation with:
-  - `_SniffScriptHandler` — dedicated WKScriptMessageHandler subclass (avoids `self` as handler, fixing brief's `initWithBlock` antipattern)
-  - WKWebView created with `CGRectMake(0, 0, 1, 1)` and added to key window (fixes brief's `CGRectZero` that prevents rendering)
-  - User-Agent extracted via `evaluateJavaScript:navigator.userAgent`
-  - Cookies extracted via `httpCookieStore.getAllCookies:`
-  - Returns `{url: foundUrl, headers: {User-Agent, Cookie}}` or `null` on timeout
+## Status: DONE
 
-## Files Changed
-- **`CatPlayer/overlay/src/node/NodeService.tsx`** (lines 191-198, 562-571):
-  - Added `data.type === 'sniff'` case inside `channel.on('message')` — calls `handleSniff()` and sends result with `correlationId` back via `NodeJS.channel.send`
-  - Added `handleSniff(data)` private method — requires `NativeModules.SniffModule`, calls `SniffModule.sniff(url, rule, timeout)`, returns result or `null` on failure
-- **`nodejs/src/main.js`** (lines 126-136, 168-183):
-  - Added correlationId detection in `rn_bridge.channel.on('message')` — if message has `correlationId`, routes to pending requests map
-  - Added `pendingRequests` map and `registerPendingRequest(correlationId, timeout)` function for future spider use
+### Files Modified
+- `CatPlayer/overlay/src/player/engines/BuiltinEngine.ts` → renamed to `.tsx`, full implementation
+- `CatPlayer/overlay/src/player/VideoPlayer.tsx` — adapted for engine-based rendering
 
-## Test Evidence
-- LSP diagnostics not applicable (ObjC files have no TS LSP; NodeService.tsx and main.js have no syntax errors per read-back)
-- No build step run (requires Xcode — not available in this environment)
+### Commits
+```
+feat: complete BuiltinEngine implementation with Video component integration
+```
 
-## Concerns
-- `SniffModule.m` references `[UIApplication sharedApplication].keyWindow` — deprecated in iOS 15+ but functional; brief's requirement matches iOS 13+ guard
-- `pendingRequests` in `main.js` has no max-size guard; in practice only 1-2 pending requests expected per sniff cycle — safe for now
+### Changes Made
+
+**BuiltinEngine.tsx:**
+- Added private `ref`, `currentUri`, `currentHeaders` state fields
+- `play(url, headers)` — stores playback state (VideoPlayer drives actual rendering)
+- `pause()/resume()/seek()/setRate()` — delegates to Video ref
+- `presentFullscreen()` — convenience for fullscreen toggle
+- `destroy()` — nulls ref
+- `renderVideo(props)` — returns `<Video>` JSX with all event handlers, chain `onLoad` to engine callback for resumePos support
+- Added `controls` prop to `<Video>` (was present before, matches original behavior)
+
+**VideoPlayer.tsx:**
+- Removed top-level `let Video = require(...)` — BuiltinEngine owns Video import
+- Added `hasBuiltinVideo` boolean for fallback check
+- Engine creation now happens for ALL modes (previously only for non-builtin)
+- Rendering: `engine.renderVideo()` for BuiltinEngine, `<View />` placeholder for MPV
+- Fullscreen button uses `engine.presentFullscreen()` via engineRef
+- Removed `ref` useRef (now owned by BuiltinEngine internally)
+- Removed dead `speedKey`/`setSpeedKey` (no longer needed since Video remount not required for rate changes)
+
+### Verification
+- `engines/index.ts` `createEngine('mpv')` already catches errors → fallback to builtin (confirmed)
+- `engines.ts` (legacy) references `require('./engines/BuiltinEngine')` — Metro resolves `.tsx`
+- TypeScript: `npx tsc --noEmit` — no errors
+- Git: `git mv` rename committed (delete .ts, add .tsx, modify VideoPlayer.tsx)
+
+### Key Design Decisions
+- `BuiltinEngine.tsx` must be `.tsx` because `renderVideo()` returns JSX
+- `hasBuiltinVideo` replaces top-level `Video` check — BuiltinEngine handles its own require
+- Engine `resumePos` seek happens via `engine.onLoad` callback (same pattern for both builtin and non-builtin)
+
+## Post-Review Fixes (Task 5 Review)
+
+### Fix 1 (HIGH): Stale closure in engine.onLoad resume
+Removed resumePos logic from `engine.onLoad` callback — closure captured `resumePos` as null permanently. The `handleLoad` useCallback + `resumePos` prop on `renderVideo()` already handle resume correctly.
+
+### Fix 2 (MEDIUM): Restore speedKey remount for speed changes
+Added `speedKey` state and `<View key={speedKey}>` wrapper around `engine.renderVideo()` call. Increment on `cycleSpeed` to force React remount when speed changes.
+
+### Fix 3 (MEDIUM): Remove duplicate engines/index.ts
+`engines/index.ts` was dead code — `from './engines'` resolves to `engines.ts` (exact match wins). Deleted `engines/index.ts`.
+
+### Files Modified
+- `CatPlayer/overlay/src/player/VideoPlayer.tsx` — all 3 fixes
+- `CatPlayer/overlay/src/player/engines/index.ts` — deleted
+
+### Commits
+```
+fix: resolve resume position stale closure, restore speedKey remount, clean duplicate engines
+```

@@ -30,6 +30,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     const [position, setPosition] = useState(0);
     const [duration, setDuration] = useState(0);
     const [resumePos, setResumePos] = useState<number | null>(null);
+    const [speedKey, setSpeedKey] = useState(0);
     const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const engineRef = useRef<BuiltinEngine | ReturnType<typeof createEngine> | null>(null);
     const [effectiveEngine, setEffectiveEngine] = useState<string>('builtin');
@@ -73,10 +74,6 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
             engine.onLoad = (dur: number) => {
                 setLoading(false);
                 if (dur > 0) setDuration(dur);
-                if (resumePos && resumePos > 5) {
-                    engine.seek(resumePos);
-                    setResumePos(null);
-                }
             };
 
             if (key !== 'builtin') {
@@ -137,6 +134,7 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
         const idx = SPEED_OPTIONS.indexOf(speed);
         const next = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
         setSpeed(next);
+        setSpeedKey(k => k + 1);
     }, [speed]);
 
     const isBuiltin = effectiveEngine === 'builtin';
@@ -159,7 +157,8 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
     return (
         <TouchableOpacity activeOpacity={1} style={styles.root} onPress={resetHideTimer}>
             {isBuiltin && engineRef.current instanceof BuiltinEngine ? (
-                engineRef.current.renderVideo({
+                <View key={speedKey}>
+                {engineRef.current.renderVideo({
                     uri,
                     headers,
                     rate: speed,
@@ -171,7 +170,8 @@ export default function VideoPlayer({ uri, headers, title, qualities, qi, onQual
                         setErr(e?.error?.localizedDescription || e?.error?.errorString || JSON.stringify(e?.error || e));
                     },
                     resumePos: resumePos ?? undefined,
-                })
+                })}
+                </View>
             ) : (
                 <View style={styles.video} />
             )}
