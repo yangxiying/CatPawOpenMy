@@ -70,6 +70,16 @@ jobs:
           bash scripts/build-mpv-ios.sh || echo "mpv build failed, continuing..."
         continue-on-error: true
 
+      - name: Setup Node 18 for Xcode (nodejs-mobile requires v18)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Verify Node version visible to Xcode
+        run: |
+          echo "node: $(which node) → $(node -v)"
+          echo "npm: $(npm -v)"
+
       - name: Build unsigned IPA
         working-directory: CatPlayer
         run: ./build-ipa.sh
