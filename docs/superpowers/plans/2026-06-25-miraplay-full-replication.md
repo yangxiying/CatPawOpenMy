@@ -91,7 +91,7 @@ Task 1、2、5 可并行启动。
 - FRAMEWORK_SEARCH_PATHS 优先指向 `../Frameworks` 确保 Xcode 链接提取版而非 npm 自带的
 - `nodejs-mobile-react-native` 仅用于获取 RN 桥代码（`NodeJS.start()`、`NodeJS.channel`），不包含实际运行时
 
-- [ ] **Step 1: 提取 NodeMobile.framework from MiraPlay IPA**
+- [x] **Step 1: 提取 NodeMobile.framework from MiraPlay IPA**
 
 ```bash
 cd /Users/yangxiying/Documents/data/my-project/CatPawOpenMy
@@ -105,7 +105,7 @@ rm -rf /tmp/miraplay_extract
 
 Expected: `CatPlayer/app/Frameworks/NodeMobile.framework/` 存在，包含 NodeMobile 二进制（~54MB）。
 
-- [ ] **Step 2: 安装 nodejs-mobile-react-native**
+- [x] **Step 2: 安装 nodejs-mobile-react-native**
 
 ```bash
 cd CatPlayer/app
@@ -114,7 +114,7 @@ npm install --save nodejs-mobile-react-native
 
 Expected: `package.json` 含 `"nodejs-mobile-react-native": "^1.0.0"`。
 
-- [ ] **Step 3: 更新 patch.js — 添加 FRAMEWORK_SEARCH_PATHS**
+- [x] **Step 3: 更新 patch.js — 添加 FRAMEWORK_SEARCH_PATHS**
 
 编辑 `CatPlayer/patch.js`，在 Podfile 处理部分加入 FRAMEWORK_SEARCH_PATHS 注入。在 Podfile 的 `platform :ios` 行后插入：
 
@@ -137,7 +137,7 @@ end
 
 修改 `patch.js` 的 Podfile 节，在设置 platform 后添加 FRAMEWORK_SEARCH_PATHS 行，并添加 post_install 块。
 
-- [ ] **Step 4: 更新 setup.sh — 确保 nodejs-mobile-react-native 被安装**
+- [x] **Step 4: 更新 setup.sh — 确保 nodejs-mobile-react-native 被安装**
 
 在 `setup.sh` 的 npm install 节中添加：
 
@@ -149,7 +149,7 @@ fi
 
 将 `nodejs-mobile-react-native` 加入非 minimal 模式的依赖安装列表。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add CatPlayer/app/Frameworks/NodeMobile.framework/  # 需 git-lfs 或 .gitignore 排除
@@ -172,7 +172,7 @@ git commit -m "feat: add NodeMobile.framework + nodejs-mobile-react-native depen
 - loadScript(path) 按 require 加载远程源 bundle
 - rn-bridge.channel.on('message') 接收 RN 侧指令（run / nativeServerPort）
 
-- [ ] **Step 1: 创建 nodejs/src/main.js**
+- [x] **Step 1: 创建 nodejs/src/main.js**
 
 ```javascript
 const { builtinModules } = require('module');
@@ -224,7 +224,7 @@ rn_bridge.channel.on('message', (msg) => {
 rn_bridge.channel.send(JSON.stringify({ type: 'node-started', message: 'runtime ready' }));
 ```
 
-- [ ] **Step 2: 验证 esbuild 输出**
+- [x] **Step 2: 验证 esbuild 输出**
 
 检查 `nodejs/esbuild.js` — 应已包含 main.js 构建入口（从阅读确认已存在）。验证：
 
@@ -236,11 +236,11 @@ ls -la dist/nodejs-runtime.js
 
 Expected: `dist/nodejs-runtime.js` 存在，bundle 了 main.js + builtinModules。
 
-- [ ] **Step 3: 更新 setup.sh — 复制 main.js 到 nodejs-assets**
+- [x] **Step 3: 更新 setup.sh — 复制 main.js 到 nodejs-assets**
 
 检查 setup.sh 中现有逻辑（第 74-86 行）：已复制 `dist/nodejs-runtime.js` 到 `nodejs-assets/nodejs-project/main.js`。无需修改。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add nodejs/src/main.js
@@ -263,7 +263,7 @@ git commit -m "feat: add NodeMobile runtime entry main.js"
 - Boot 页错误处理：NodeMobile 不启动 → "Node.js 运行时启动失败"；未配置源 → "请设置源 URL"
 - `NodeWebView` React 组件：仅用于渲染网站源（isWebsiteSource=true），移除服务源渲染
 
-- [ ] **Step 1: 重建 NodeService init 流程 — 移除 WebView fallback**
+- [x] **Step 1: 重建 NodeService init 流程 — 移除 WebView fallback**
 
 替换 `tryNativeNode()` 为同步启动，不移除 WebView fallback 但将 WebView 路径改为仅网站源。
 
@@ -364,7 +364,7 @@ async init() {
 }
 ```
 
-- [ ] **Step 2: 简化 request 方法 — NodeMobile 直连 HTTP**
+- [x] **Step 2: 简化 request 方法 — NodeMobile 直连 HTTP**
 
 `request()` 方法改造：移除 WebView fallback，仅使用 `nativeNodeRequest()`。
 
@@ -379,7 +379,7 @@ async request(req: BridgeRequest): Promise<BridgeResponse> {
 
 删除 `private wvRef`、`setWebViewRef()`、`getBundleCode()`、`getConfigCode()` 等 WebView 相关属性和方法。
 
-- [ ] **Step 3: 简化 NodeWebView React 组件**
+- [x] **Step 3: 简化 NodeWebView React 组件**
 
 保留 `NodeWebView` 组件，但仅用于网站源渲染（`isWebsiteSource=true` 时）。组件逻辑简化：
 
@@ -415,7 +415,7 @@ export function NodeWebView({ visible: forcedVisible }: { visible?: boolean }) {
 }
 ```
 
-- [ ] **Step 4: 更新 Boot.tsx 错误处理**
+- [x] **Step 4: 更新 Boot.tsx 错误处理**
 
 修改 `CatPlayer/overlay/src/ui/screens/Boot.tsx`，在 NodeMobile 不启动时显示明确错误信息：
 
@@ -434,7 +434,7 @@ NodeService.waitForReady().then(() => {
 
 如果 60s 超时未就绪，显示超时错误而不是 WebView 错误。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add CatPlayer/overlay/src/node/NodeService.tsx CatPlayer/overlay/src/ui/screens/Boot.tsx
@@ -454,7 +454,7 @@ git commit -m "refactor: rewrite NodeService for NodeMobile primary path"
 - Delete: `CatPlayer/scripts/inline-spider-bundle.mjs`
 - Modify: `CatPlayer/setup.sh`（移除 inline 脚本调用）
 
-- [ ] **Step 1: 删除废弃文件**
+- [x] **Step 1: 删除废弃文件**
 
 ```bash
 rm CatPlayer/overlay/src/node/polyfill-string.ts
@@ -465,7 +465,7 @@ rm CatPlayer/scripts/inline-polyfill.mjs
 rm CatPlayer/scripts/inline-spider-bundle.mjs
 ```
 
-- [ ] **Step 2: 更新 setup.sh — 移除 inline 脚本调用**
+- [x] **Step 2: 更新 setup.sh — 移除 inline 脚本调用**
 
 在 `setup.sh` 中移除以下行（第 47 行附近）：
 
@@ -492,11 +492,11 @@ node "$HERE/scripts/build-nodejs-runtime.sh"
 
 或简化后嵌入。
 
-- [ ] **Step 3: 移除 NodeWebView 中 bridge 导入**
+- [x] **Step 3: 移除 NodeWebView 中 bridge 导入**
 
 确认 `WebViewNode.tsx` 中不再 import `./bridge`（已移除服务源逻辑后不再需要 `handleWebViewMessage`）。在 Task 3 未完全移除的情况下，此处仅确保 import 行删除。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git rm CatPlayer/overlay/src/node/polyfill-string.ts \
@@ -524,7 +524,7 @@ git commit -m "chore: remove old WebView polyfill files"
 - BuiltinEngine 作为 JS 控制器，通过 ref 操作 Video 实例
 - engines/index.ts 的 createEngine 已内置 mpv → builtin 回退（仅在 mpv 不可用时）
 
-- [ ] **Step 1: 补全 BuiltinEngine.ts**
+- [x] **Step 1: 补全 BuiltinEngine.ts**
 
 当前 BuiltinEngine 是 stub（所有方法 no-op）。改造为持有 `Video` ref 的控制器：
 
@@ -613,7 +613,7 @@ export class BuiltinEngine implements PlayerEngine {
 }
 ```
 
-- [ ] **Step 2: 更新 VideoPlayer.tsx — 适配 BuiltinEngine**
+- [x] **Step 2: 更新 VideoPlayer.tsx — 适配 BuiltinEngine**
 
 将 VideoPlayer.tsx 中直接使用 `<Video>` 的部分改为通过 engine 渲染。现有代码第 165-186 行的 `<Video>` 直接渲染改为调用 `engine.renderVideo()`（如果引擎是 BuiltinEngine 且 engine 实例已创建）。
 
@@ -650,11 +650,11 @@ useEffect(() => {
 )}
 ```
 
-- [ ] **Step 3: 验证引擎回退逻辑**
+- [x] **Step 3: 验证引擎回退逻辑**
 
 确认 `CatPlayer/overlay/src/player/engines/index.ts` 中 `createEngine('mpv')` 在 MPV NativeModule 不存在时回退到 BuiltinEngine。当前实现已正确（`try { return e.factory(); } catch { return ENGINES.builtin.factory(); }`）。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add CatPlayer/overlay/src/player/engines/BuiltinEngine.ts CatPlayer/overlay/src/player/VideoPlayer.tsx
@@ -675,7 +675,7 @@ git commit -m "feat: complete BuiltinEngine implementation with Video component 
 - mpv 编译失败时 IPA 继续构建（非阻塞）
 - CI timeout 调整到 120min（mpv 编译需较长时间）
 
-- [ ] **Step 1: 创建或修改 CI 工作流**
+- [x] **Step 1: 创建或修改 CI 工作流**
 
 在 `.github/workflows/build-ios.yml` 中 xcodebuild 前加入：
 
@@ -692,7 +692,7 @@ git commit -m "feat: complete BuiltinEngine implementation with Video component 
   run: ./build-ipa.sh
 ```
 
-- [ ] **Step 2: 调整 CI timeout**
+- [x] **Step 2: 调整 CI timeout**
 
 ```yaml
 jobs:
@@ -700,7 +700,7 @@ jobs:
     timeout-minutes: 120
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add .github/workflows/build-ios.yml
@@ -717,7 +717,7 @@ git commit -m "ci: add mpv build step and increase timeout to 120min"
 
 **Verification checklist:**
 
-- [ ] **Step 1: 验证 NodeMobile 集成**
+- [x] **Step 1: 验证 NodeMobile 集成**
 
 ```bash
 # 确保 setup 成功
@@ -728,7 +728,7 @@ ls -la app/nodejs-assets/nodejs-project/main.js
 # 预期：存在 main.js（Node.js 运行时入口）
 ```
 
-- [ ] **Step 2: 验证 Xcode 链接**
+- [x] **Step 2: 验证 Xcode 链接**
 
 ```bash
 # 打开 Xcode 检查 Build Phases → Link Binary With Libraries
@@ -738,29 +738,29 @@ cd CatPlayer/app/ios
 grep -r "NodeMobile" . -l
 ```
 
-- [ ] **Step 3: 验证 NodeMobile 启动流程**
+- [x] **Step 3: 验证 NodeMobile 启动流程**
 
 启动 App → Boot 页应显示：
 1. `[NodeJS] trying module...`（日志）
 2. `[NodeJS] server-ready on port XXXXX`（NodeMobile 启动成功）
 3. 远程源下载 → `/config` 返回站点列表
 
-- [ ] **Step 4: 验证远程源加载**
+- [x] **Step 4: 验证远程源加载**
 
 进入 Settings → 添加远程源 URL → 返回 Boot → NodeService 下载 bundle → rn-bridge send `action:'run'` → NodeMobile loadScript → 站点列表显示。
 
-- [ ] **Step 5: 验证 mpv 播放和 BuiltinEngine 回退**
+- [x] **Step 5: 验证 mpv 播放和 BuiltinEngine 回退**
 
 - mpv 编译成功时：播放器使用 MPVEngine
 - mpv 未编译时：自动回退 BuiltinEngine（react-native-video）
 - 播放控制（play/pause/seek/setRate）正常工作
 
-- [ ] **Step 6: 验证未配置源 URL 时引导用户**
+- [x] **Step 6: 验证未配置源 URL 时引导用户**
 
 - StorageService 无 sources 时 → Boot 页显示"请进入 Settings 设置源 URL"
 - 自动跳转到 Settings 页面
 
-- [ ] **Step 7: 更新文档**
+- [x] **Step 7: 更新文档**
 
 更新 `CLAUDE.md` 和 `AGENTS.md` 中的关键文件映射和架构说明。
 
