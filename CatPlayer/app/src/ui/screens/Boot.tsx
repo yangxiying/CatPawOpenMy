@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, ScrollView, StyleSheet, Clipboard } from 'react-native';
 import NodeService from '../../node/NodeService';
-import { CatApi } from '../../api/CatApi';
+import { CatApi, CatConfig } from '../../api/CatApi';
 import { useNav } from '../App';
 
 export default function Boot() {
@@ -53,13 +53,18 @@ export default function Boot() {
         });
         const offErr = NodeService.onError(m => setErr(m));
         const timeout = setTimeout(() => {
-            setErr('等待超时（60s）— WebView 未就绪');
+            setErr('等待超时（60s）— Node.js 运行时未就绪');
         }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
-            setLogs(l => [...l, '服务已就绪，请点击「解析」或「进入」']);
+            setLogs(l => [...l, 'Node.js 服务已就绪，请点击「解析」获取站点列表']);
             setReady(true);
-        }).catch(e => { clearTimeout(timeout); setErr(String(e)); });
+            // 不再自动解析、不再自动导航 — 用户手动点击解析 + 进入
+    // 解析完成标志仅用于显示"进入"按钮
+        }).catch(e => {
+            clearTimeout(timeout);
+            setErr('Node.js 运行时启动失败: ' + String(e));
+        });
         return () => { offLog(); offErr(); clearTimeout(timeout); };
     }, []);
 

@@ -13,7 +13,6 @@ export default function Boot() {
     const [parsing, setParsing] = useState(false);
     const [parsed, setParsed] = useState(false);
     const configRef = useRef<CatConfig|null>(null);
-    const autoNavDone = useRef(false);
 
     const parseSites = async () => {
         setErr(null);
@@ -58,27 +57,15 @@ export default function Boot() {
         }, 60000);
         NodeService.waitForReady().then(() => {
             clearTimeout(timeout);
-            setLogs(l => [...l, '服务已就绪，请点击「解析」或「进入」']);
+            setLogs(l => [...l, 'Node.js 服务已就绪，请点击「解析」获取站点列表']);
             setReady(true);
-            // 自动解析
-            setTimeout(() => parseSites(), 500);
+            // 不再自动解析 — 用户手动点击「解析」
         }).catch(e => {
             clearTimeout(timeout);
             setErr('Node.js 运行时启动失败: ' + String(e));
         });
         return () => { offLog(); offErr(); clearTimeout(timeout); };
     }, []);
-
-    // 解析完成后自动导航到站点页面
-    useEffect(() => {
-        if (parsed && configRef.current && !autoNavDone.current) {
-            autoNavDone.current = true;
-            setLogs(l => [...l, '自动进入站点页面...']);
-            setTimeout(() => {
-                nav.replace('Sites', { config: configRef.current });
-            }, 1000);
-        }
-    }, [parsed, nav]);
 
     return (
         <View style={styles.c}>
