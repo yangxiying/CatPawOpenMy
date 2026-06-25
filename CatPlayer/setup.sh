@@ -41,14 +41,14 @@ echo "▶ installing JS deps …"
 npm install
 if [ "$MINIMAL" = "false" ]; then
     npm install --save react-native-webview react-native-fs react-native-video@5.2.2 nodejs-mobile-react-native
-    echo "▶ extracting NodeMobile.framework (Node.js runtime) …"
+    echo "▶ extracting NodeMobile.xcframework (Node.js runtime) …"
     mkdir -p Frameworks
-    NMF="node_modules/nodejs-mobile-react-native/ios/NodeMobile.xcframework/ios-arm64/NodeMobile.framework"
-    if [ -d "$NMF" ]; then
-        cp -R "$NMF" "Frameworks/NodeMobile.framework"
-        echo "  NodeMobile.framework: $(du -sh Frameworks/NodeMobile.framework | awk '{print $1}')"
+    NMF_DIR="node_modules/nodejs-mobile-react-native/ios/NodeMobile.xcframework"
+    if [ -d "$NMF_DIR" ]; then
+        cp -R "$NMF_DIR" "Frameworks/NodeMobile.xcframework"
+        echo "  NodeMobile.xcframework: $(du -sh Frameworks/NodeMobile.xcframework | awk '{print $1}')"
     else
-        echo "  ! NodeMobile.framework not found in npm package — check nodejs-mobile-react-native install"
+        echo "  ! NodeMobile.xcframework not found in npm package — check nodejs-mobile-react-native install"
     fi
 fi
 
