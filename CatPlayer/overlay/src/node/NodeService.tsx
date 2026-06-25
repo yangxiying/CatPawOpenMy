@@ -330,18 +330,80 @@ class NodeServiceImpl {
             this.log('原生 Node.js 超时未就绪，回退 WebView');
         }
 
-        // 始终使用内嵌爬虫服务 bundle
-        if (!embeddedSpiderCode) {
-            this.error('embedded spider bundle not found — build nodejs/ first');
+        // 始终从远程源 URL 下载 bundle 解析
+        let remoteUrl = '';
+        try {
+            const { StorageService } = require('../storage/StorageService');
+            await StorageService.migrateSourceSettings();
+            const active = await StorageService.getActiveSource();
+            remoteUrl = active?.url || '';
+        } catch {}
+
+        if (!remoteUrl) {
+            this.error('no source URL configured');
             return;
         }
-        this.bundleCode = embeddedSpiderCode;
-        this.configCode = embeddedSpiderConfig;
-        this.setIsWebsiteSource(false);
-        this.log(`embedded spider server (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
-        this.log('triggering WebView render…');
-        this.renderTrigger?.();
-        this.log('WebView render triggered');
+
+        this.log(`downloading source: ${remoteUrl}`);
+        try {
+            const dir = Platform.OS === 'ios'
+                ? `${RNFS.DocumentDirectoryPath}/catplayer`
+                : `${RNFS.DocumentDirectoryPath}/catplayer`;
+            await RNFS.mkdir(dir).catch(() => {});
+
+            // 解析 base URL
+            const baseNoMd5 = remoteUrl.replace(/\/index\.js\.md5$/, '').replace(/\/index\.md5$/, '');
+            const md5Url = baseNoMd5 + '/index.js.md5';
+            const jsUrl = baseNoMd5 + '/index.js';
+            const cfgPath = `${dir}/index.config.js`;
+            const idxPath = `${dir}/index.js`;
+
+            // 获取 auth header
+            let authHeader = '';
+            try {
+                const u = new URL(remoteUrl);
+                if (u.username || u.password) {
+                    authHeader = 'Basic ' + btoa(decodeURIComponent(u.username) + ':' + decodeURIComponent(u.password));
+                }
+            } catch {}
+
+            // MD5 校验
+            this.log('fetching remote md5…');
+            await RNFS.downloadFile({ fromUrl: md5Url, toFile: `${dir}/index.md5`, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+            const wantMd5 = (await RNFS.readFile(`${dir}/index.md5`, 'utf8')).trim();
+            let cachedMd5 = '';
+            try { cachedMd5 = (await RNFS.readFile(`${dir}/.md5`, 'utf8')).trim(); } catch {}
+
+            const idxExists = await RNFS.exists(idxPath).catch(() => false);
+            let localOk = false;
+            if (idxExists) {
+                try {
+                    const content = await RNFS.readFile(idxPath, 'utf8');
+                    localOk = md5(content).trim() === wantMd5;
+                } catch {}
+            }
+
+            if (cachedMd5 !== wantMd5 || !localOk) {
+                this.log('downloading index.js…');
+                await RNFS.downloadFile({ fromUrl: jsUrl, toFile: idxPath, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+                await RNFS.downloadFile({ fromUrl: baseNoMd5 + '/index.config.js', toFile: cfgPath, headers: authHeader ? { Authorization: authHeader } : {} }).promise;
+                await RNFS.writeFile(`${dir}/.md5`, wantMd5, 'utf8');
+            } else {
+                this.log('cache hit');
+            }
+
+            this.bundleCode = await RNFS.readFile(idxPath, 'utf8');
+            this.configCode = await RNFS.readFile(cfgPath, 'utf8');
+            const isWeb = this.bundleCode.includes('globalThis.websiteBundle');
+            this.setIsWebsiteSource(isWeb);
+            this.log(`bundle loaded (${(this.bundleCode.length / 1024).toFixed(0)} KB), config (${(this.configCode.length / 1024).toFixed(0)} KB)`);
+            if (isWeb) this.log('  类型: 网站源');
+            this.log('triggering WebView render…');
+            this.renderTrigger?.();
+            this.log('WebView render triggered');
+        } catch (e: any) {
+            this.error(String(e?.message || e));
+        }
     }
 
     /** 切换源地址后重新检测源类型 */
